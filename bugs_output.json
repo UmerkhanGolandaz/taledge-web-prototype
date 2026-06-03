@@ -1,0 +1,12 @@
+[
+  {"bug": "AudioContext leak - each startCamera call creates a new AudioContext that is never closed", "severity": "critical", "fix": "Store AudioContext in a ref and call audioContextRef.current.close() in the cleanup useEffect"},
+  {"bug": "Raw stream audio tracks never stopped - rawStream audio tracks remain active after cleanStream is built", "severity": "critical", "fix": "Call rawStream.getAudioTracks().forEach(t => t.stop()) after building cleanStream"},
+  {"bug": "60s auto-stop timeout race condition - timeout captures recognitionRef.current at call time, toggling recording reassigns it, old timeout stops wrong instance", "severity": "high", "fix": "Store timeout ID in a ref and clear it in onend/onerror. Check recognitionRef.current === recognition before stop()"},
+  {"bug": "onerror handler ignores event.error - same generic message for all error types", "severity": "high", "fix": "Change onerror to receive event parameter and check event.error for specific user messages"},
+  {"bug": "Timer setInterval never cleared - analyzeResume returns cleanup but return value is never captured by React", "severity": "high", "fix": "Use useRef for interval ID, clear it in cleanup useEffect and in generateReport"},
+  {"bug": "WaveShaper threshold 0.02 clips quiet speech - words get dropped from recognition results", "severity": "medium", "fix": "Lower threshold or use BiquadFilterNode dynamic gate. Consider passing rawStream directly to SpeechRecognition"},
+  {"bug": "Dual noise processing conflict - browser echoCancellation/noiseSuppression runs alongside custom pipeline, causing distortion", "severity": "medium", "fix": "Disable browser noise suppression in getUserMedia constraints or remove custom pipeline"},
+  {"bug": "speechSynthesis has no onend handler and no try/catch - cannot track completion, throws from background tab", "severity": "medium", "fix": "Add utterance.onend handler and wrap speak call in try/catch"},
+  {"bug": "Background tab silently stops recognition in Firefox - onend fires, user may not realize answer was never submitted", "severity": "medium", "fix": "Check isRecording still true in onend. Pause timer using document.visibilityState"},
+  {"bug": "Video preview pipeline is ambiguous - no actual recording mechanism, intent unclear", "severity": "low", "fix": "Add comment clarifying display-only use. Implement MediaRecorder if permanent recording is intended"}
+]

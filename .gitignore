@@ -1,0 +1,25 @@
+# Next.js
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Local env files
+.env
+/*.local
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Sessions (file-based store — not tracked)
+.sessions/
+
+# Logs
+*.log
