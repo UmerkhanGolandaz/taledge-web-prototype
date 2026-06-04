@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ScoreRing, Sparkline } from "@/components/score-ring";
 import { getStudent } from "@/lib/data";
 
+const SHOW_PHASE_2 = false;
+
 export default async function Development({
   params,
 }: {
@@ -14,17 +16,21 @@ export default async function Development({
 
   return (
     <div className="relative overflow-hidden">
-      {/* Faint grid overlay across hero */}
-      <div className="bg-grid pointer-events-none absolute inset-x-0 top-0 -z-10 h-[280px] opacity-40" />
-
-      {/* HERO */}
-      <section className="relative border-b border-ink-200 pt-8 pb-8 sm:pt-12 sm:pb-10">
+      
+      {/* Jaw-dropping animated background */}
+      <div className="fixed inset-0 -z-20 min-h-screen bg-slate-50 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-emerald-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} />
+        <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-amber-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '12s' }} />
+      </div>
+{/* HERO */}
+      <section className="relative border-b border-white/40 pt-8 pb-8 sm:pt-12 sm:pb-10">
         <div className="container mx-auto max-w-7xl px-5 sm:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="pill animate-fade-in">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm animate-fade-in">
               <SparkIcon /> Step 06 of 06 · Development Pathway
             </div>
-            <Link href={`/student/${s.id}`} className="btn-ghost !py-2 text-xs">
+            <Link href={`/student/${s.id}`} className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/40 border border-white/40 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md !py-2 text-xs">
               <ArrowLeft /> Back
             </Link>
           </div>
@@ -44,16 +50,16 @@ export default async function Development({
                   >
                     0{i + 1} · {label}
                   </span>
-                  {i < 5 && <span className="text-ink-300">·</span>}
+                  {i < 5 && <span className="text-slate-300">·</span>}
                 </div>
               );
             })}
           </div>
 
-          <h1 className="mt-7 max-w-4xl text-2xl font-bold tracking-tight leading-[1.1] text-ink-900 sm:text-3xl md:text-4xl">
+          <h1 className="mt-7 max-w-4xl text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight font-bold tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
             Closing the gap to {s.targetRole}
           </h1>
-          <p className="mt-4 max-w-2xl text-sm text-ink-500 sm:text-base">
+          <p className="mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
             Personalized learning pathway synthesized from DNLA + AI interviews.
             Coach-matched, sprint-structured, longitudinally tracked.
           </p>
@@ -62,10 +68,10 @@ export default async function Development({
 
       <div className="container mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
         {/* Quadrant + Score ring */}
-        <div className="card p-5 sm:p-7">
+        <div className="relative bg-white/40 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-5 sm:p-7">
           <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-3">
             <div className="flex flex-col items-center">
-              <div className="label mb-3">Projected outcome</div>
+              <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-3">Projected outcome</div>
               <ScoreRing
                 value={s.fit.successProbability}
                 size={180}
@@ -75,7 +81,7 @@ export default async function Development({
               />
             </div>
             <div className="lg:col-span-2">
-              <div className="label mb-3">The Quadrant</div>
+              <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-3">The Quadrant</div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Quadrant
                   title="Technical · Strong"
@@ -110,17 +116,17 @@ export default async function Development({
         <section className="mt-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="pill">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <FlowIcon /> The Pathway
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
+              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
                 Learning pathway
               </h2>
-              <p className="mt-2 text-sm text-ink-500">
-                Generated by Claude. Refreshed after each interview.
+              <p className="mt-2 text-sm text-slate-500">
+                Generated from your assessment evidence. Refreshed after each interview.
               </p>
             </div>
-            <span className="chip-soft">6 weeks · 3 sprints</span>
+            <span className="inline-flex items-center px-3 py-1 text-xs font-semibold text-slate-600 bg-slate-100/50 border border-white/40 rounded-full backdrop-blur-sm">6 weeks · 3 sprints</span>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Sprint
@@ -141,7 +147,7 @@ export default async function Development({
               title="System design depth"
               items={[
                 "Course · Designing data-intensive systems (ch 1-4)",
-                "Project · Add observability to CampusKart",
+                "Project · Add observability to a production service",
                 "Drill · 4 system design mocks",
               ]}
               foot="Expected lift: +6 technical · +3 fit"
@@ -160,32 +166,32 @@ export default async function Development({
           </div>
         </section>
 
-        {/* Role transition */}
-        <section className="mt-12">
+        {/* Phase 2 role-transition preview remains in code but hidden for Phase 1. */}
+        {SHOW_PHASE_2 && <section className="mt-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="pill">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <SwitchIcon /> Phase 02 Preview
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
+              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
                 Role transition
               </h2>
-              <p className="mt-2 text-sm text-ink-500">
+              <p className="mt-2 text-sm text-slate-500">
                 Want to pivot to a different role? Here's the gap.
               </p>
             </div>
           </div>
-          <div className="card p-5 sm:p-7">
+          <div className="relative bg-white/40 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-5 sm:p-7">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="label">If you target Data Scientist · Prompt Eng.</div>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-lg font-bold tracking-tight text-ink-900 sm:text-xl">
+                <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">If you target Data Scientist · Prompt Eng.</div>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600">
                   <span>{s.targetRole}</span>
-                  <span className="text-ink-300">→</span>
+                  <span className="text-slate-300">→</span>
                   <span>Data Scientist</span>
                 </div>
               </div>
-              <Link href="/coach-ai" className="btn-primary">
+              <Link href="/coach-ai" className="relative inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-950 hover:shadow-xl hover:shadow-slate-900/20 hover:-translate-y-0.5 active:scale-95 overflow-hidden ring-1 ring-white/10">
                 Open AI Coach
                 <ArrowRight />
               </Link>
@@ -209,16 +215,16 @@ export default async function Development({
               </GapCol>
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* Coaching */}
         <section className="mt-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="pill">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <MentorIcon /> The Coaches
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
+              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
                 Matched coaches
               </h2>
             </div>
@@ -248,14 +254,14 @@ export default async function Development({
         {/* Longitudinal */}
         <section className="mt-12">
           <div className="mb-6">
-            <div className="pill">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
               <ChartIcon /> The Trend
             </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
+            <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
               Progress so far
             </h2>
           </div>
-          <div className="card p-5 sm:p-7">
+          <div className="relative bg-white/40 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-5 sm:p-7">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               <Trend label="Fit Score" data={[55, 58, 60, 62, 65, 68, 70, 72]} />
               <Trend label="Behavioural" data={[40, 42, 45, 48, 52, 55, 56, 58]} />
@@ -289,8 +295,8 @@ function Quadrant({
   }[tone];
   return (
     <div className={`rounded-xl border ${cls} p-4 sm:p-5`}>
-      <div className="label">{title}</div>
-      <ul className="mt-3 space-y-1.5 text-sm text-ink-700">
+      <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">{title}</div>
+      <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
         {items.map((i) => (
           <li key={i} className="flex items-start gap-2.5">
             <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
@@ -324,19 +330,19 @@ function Sprint({
       }`}
     >
       <div className="flex items-center justify-between">
-        <div className="text-3xl font-bold tracking-tight text-ink-900">{n}</div>
-        <span className="chip-soft">{tag}</span>
+        <div className="text-3xl font-bold tracking-tight text-slate-900">{n}</div>
+        <span className="inline-flex items-center px-3 py-1 text-xs font-semibold text-slate-600 bg-slate-100/50 border border-white/40 rounded-full backdrop-blur-sm">{tag}</span>
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight text-ink-900">{title}</h3>
-      <ul className="mt-3 space-y-2 text-sm text-ink-700">
+      <h3 className="mt-4 text-base font-semibold tracking-tight text-slate-900">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm text-slate-700">
         {items.map((i) => (
           <li key={i} className="flex items-start gap-2">
-            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-500" />
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-500" />
             {i}
           </li>
         ))}
       </ul>
-      <div className="mt-5 border-t border-ink-100 pt-3 text-xs font-medium text-ink-500">
+      <div className="mt-5 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
         {foot}
       </div>
     </div>
@@ -351,9 +357,9 @@ function GapCol({
   children: React.ReactNode;
 }) {
   return (
-    <div className="card-soft p-4 sm:p-5">
-      <div className="label">{title}</div>
-      <ul className="mt-3 list-disc space-y-1 pl-4 text-sm leading-relaxed text-ink-700">
+    <div className="relative bg-slate-50/40 backdrop-blur-xl border border-slate-200/40 rounded-3xl overflow-hidden p-4 sm:p-5">
+      <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">{title}</div>
+      <ul className="mt-3 list-disc space-y-1 pl-4 text-sm leading-relaxed text-slate-700">
         {children}
       </ul>
     </div>
@@ -372,28 +378,28 @@ function CoachCard({
   sessions: number;
 }) {
   return (
-    <div className="card card-hover p-5 sm:p-6">
+    <div className="relative bg-white/40 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-white/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer p-5 sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="grid h-12 w-12 place-items-center rounded-xl bg-ink-900 text-sm font-bold text-white">
+        <div className="grid h-12 w-12 place-items-center rounded-xl bg-slate-900 text-sm font-bold text-white">
           {name
             .split(" ")
             .map((p) => p[0])
             .join("")}
         </div>
         <div>
-          <div className="text-base font-semibold tracking-tight text-ink-900">
+          <div className="text-base font-semibold tracking-tight text-slate-900">
             {name}
           </div>
-          <div className="text-xs text-ink-500">{focus}</div>
+          <div className="text-xs text-slate-500">{focus}</div>
         </div>
       </div>
-      <div className="mt-5 flex items-center justify-between text-xs text-ink-600">
+      <div className="mt-5 flex items-center justify-between text-xs text-slate-600">
         <span className="inline-flex items-center gap-1 font-semibold">
           <StarIcon /> {rating}
         </span>
         <span>{sessions} sessions</span>
       </div>
-      <button className="btn-primary mt-5 w-full">Book session</button>
+      <button className="relative inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-950 hover:shadow-xl hover:shadow-slate-900/20 hover:-translate-y-0.5 active:scale-95 overflow-hidden ring-1 ring-white/10 mt-5 w-full">Book session</button>
     </div>
   );
 }
@@ -402,10 +408,10 @@ function Trend({ label, data }: { label: string; data: number[] }) {
   const last = data[data.length - 1];
   const delta = last - data[0];
   return (
-    <div className="card-soft p-4 sm:p-5">
-      <div className="label">{label}</div>
+    <div className="relative bg-slate-50/40 backdrop-blur-xl border border-slate-200/40 rounded-3xl overflow-hidden p-4 sm:p-5">
+      <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">{label}</div>
       <div className="mt-2 flex items-end gap-2">
-        <span className="text-3xl font-bold tracking-tight tabular-nums text-ink-900 sm:text-4xl">
+        <span className="text-3xl font-bold tracking-tight tabular-nums text-slate-900 sm:text-4xl">
           {last}
         </span>
         <span

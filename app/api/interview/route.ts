@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateGeminiContent, generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,107 +28,68 @@ Return EXACTLY this JSON format (no markdown, no explanation):
   "projects": ["project1", "project2"]
 }`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: "application/pdf", data: pdfBase64 } }
-          ]
-        }],
-        generationConfig: {
-          maxOutputTokens: 1000,
-          temperature: 0.3,
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingBudget: 0 }
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    return NextResponse.json({ ok: false, error: `Gemini error: ${response.status}` }, { status: 502 });
-  }
-
-  const data = await response.json();
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  let parsed;
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      parsed = JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error("No JSON found");
-    }
-  } catch {
-    return NextResponse.json({ ok: false, error: "Failed to parse resume analysis" }, { status: 502 });
-  }
+    const { parsed } = await generateGeminiJson(apiKey, prompt, {
+      parts: [{ inlineData: { mimeType: "application/pdf", data: pdfBase64 } }],
+      maxOutputTokens: 1000,
+      temperature: 0.3,
+    });
 
-  return NextResponse.json({
-    ok: true,
-    resumeText: parsed.resumeText || "",
-    skills: parsed.skills || [],
-    experience: parsed.experience || "",
-    projects: parsed.projects || [],
-  });
+    return NextResponse.json({
+      ok: true,
+      resumeText: parsed.resumeText || "",
+      skills: parsed.skills || [],
+      experience: parsed.experience || "",
+      projects: parsed.projects || [],
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Interview analysis service is unavailable.", detail: e?.upstreamError || e?.message },
+      { status: Number(e?.status) === 422 ? 422 : 502 }
+    );
+  }
 }
 
 async function generateQuestion(body: any, apiKey: string) {
-  const { candidateName, targetRole, experienceLevel, resumeText, skills, previousAnswers, questionCount } = body;
+  const { candidateName, targetRole, experienceLevel, resumeText, skills, previousAnswers, questionCount, isTech } = body;
 
   const qNum = questionCount + 1;
 
-  const prompt = `You are an AI interviewer conducting a technical interview.
+  const prompt = `You are a strict, world-class AI interviewer conducting a ${isTech ? "technical" : "behavioural"} interview for the world's best tech company.
 
 Candidate: ${candidateName}
 Target Role: ${targetRole}
 Experience: ${experienceLevel}
 Skills: ${skills?.join(", ") || "Not specified"}
-Resume: ${resumeText?.slice(0, 1000) || "Not available"}
+Resume context: ${resumeText?.slice(0, 1000) || "Not available"}
 
-${previousAnswers?.length > 0 ? `Previous answers:\n${previousAnswers.map((a: string, i: number) => `${i + 1}. ${a}`).join("\n")}` : ""}
+${previousAnswers?.length > 0 ? `Previous answers:\n${previousAnswers.map((a: string, i: number) => `User Answer ${i + 1}: ${a}`).join("\n")}` : ""}
 
-This is question ${qNum} of 8.
+This is question ${qNum} of 4.
 
 Generate ONE specific, personalized question for this candidate.
 
 Rules:
-- Build on their previous answers
-- Match their experience level
-- Be conversational, not robotic
-- Keep to 1-2 sentences
-- Focus on ${targetRole} role requirements
+- Build heavily on their previous answers. If they gave a vague answer previously, grill them on it.
+- Match their experience level but make it very challenging.
+- Keep to 1-2 sentences. Do not use pleasantries. Just ask the question.
+- CRITICAL: For technical interviews, at least once during the interview, explicitly tell the user: "For this question, please manually type your code/answer in the input box instead of speaking."
 
 Return ONLY the question text, nothing else.`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 150,
-          temperature: 0.8,
-          thinkingConfig: { thinkingBudget: 0 }
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    return NextResponse.json({ ok: false, error: "Failed to generate question" }, { status: 502 });
+  let question = "";
+  try {
+    const result = await generateGeminiContent(apiKey, prompt, {
+      maxOutputTokens: 150,
+      temperature: 0.7,
+    });
+    question = result.text.trim();
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Interview question service is unavailable.", detail: e?.upstreamError || e?.message },
+      { status: 502 }
+    );
   }
-
-  const data = await response.json();
-  const question: string = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 
   if (!question) {
     return NextResponse.json({ ok: false, error: "Empty question" }, { status: 502 });
@@ -141,17 +103,17 @@ async function generateReport(body: any, apiKey: string) {
 
   const answers = transcript?.filter((m: TranscriptMessage) => m.role === "user").map((m: TranscriptMessage) => m.content) || [];
 
-  const prompt = `Generate a detailed interview report for this candidate.
+  const prompt = `You are a world-class AI evaluator. Generate a detailed, highly critical interview report for this candidate.
 
 Candidate: ${candidateName}
 Target Role: ${targetRole}
-Skills: ${skills?.join(", ") || "Not specified"}
-Resume: ${resumeText?.slice(0, 500) || "Not available"}
 
 Interview Answers:
-${answers.map((a: string, i: number) => `Q${i + 1}: ${a}`).join("\n")}
+${answers.map((a: string, i: number) => `A${i + 1}: ${a}`).join("\n")}
 
-Generate a comprehensive report in this JSON format:
+CRITICAL: Plagiarism Detection. Analyze the answers. If any answer sounds copied from a generic AI assistant, Wikipedia, or generic online sources, heavily penalize them and note it in "areasForImprovement".
+
+Generate a comprehensive report in EXACTLY this JSON format (no markdown fences):
 {
   "overallScore": 75,
   "technicalScore": 70,
@@ -161,73 +123,41 @@ Generate a comprehensive report in this JSON format:
   "areasForImprovement": ["area1", "area2"],
   "recommendation": "Hire / Consider / Reject",
   "summary": "2-3 sentence summary",
-  "detailedFeedback": "Detailed paragraph feedback"
+  "detailedFeedback": "Detailed paragraph feedback, including note of any detected plagiarism."
 }`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 1500,
-          temperature: 0.5,
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingBudget: 0 }
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    return NextResponse.json({ ok: false, error: "Failed to generate report" }, { status: 502 });
-  }
-
-  const data = await response.json();
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  let report;
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      report = JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error("No JSON found");
-    }
-  } catch {
-    report = {
-      overallScore: 70,
-      technicalScore: 70,
-      communicationScore: 70,
-      problemSolvingScore: 70,
-      strengths: ["Good communication"],
-      areasForImprovement: ["More details needed"],
-      recommendation: "Consider",
-      summary: "Interview completed.",
-      detailedFeedback: "Report generation failed, please review transcript manually."
-    };
-  }
+    const { parsed: report } = await generateGeminiJson(apiKey, prompt, {
+      maxOutputTokens: 1500,
+      temperature: 0.2,
+    });
 
-  return NextResponse.json({
-    ok: true,
-    report: {
-      ...report,
-      candidateName,
-      targetRole,
-      skills,
-      answers,
-      generatedAt: Date.now(),
-    }
-  });
+    return NextResponse.json({
+      ok: true,
+      report: {
+        ...report,
+        candidateName,
+        targetRole,
+        skills,
+        answers,
+        generatedAt: Date.now(),
+      }
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Interview report service is unavailable.", detail: e?.upstreamError || e?.message },
+      { status: Number(e?.status) === 422 ? 422 : 502 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-
+  const apiKey = getGeminiApiKey();
   if (!apiKey) {
-    return NextResponse.json({ ok: false, error: "GEMINI_API_KEY not configured" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Interview analysis service is not configured." },
+      { status: 503 }
+    );
   }
 
   try {

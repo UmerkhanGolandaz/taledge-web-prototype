@@ -6,16 +6,16 @@ Talent Intelligence & Success Platform prototype. A dual-track web app that fuse
 
 - Next.js 15 (App Router) + React 19
 - Tailwind CSS 3
-- AI SDK 4 with `@ai-sdk/openai` pointed at OpenRouter
-  - Claude Opus 4.6 for AI interview turns
-  - Gemini 2.5 Pro for resume parsing, DNLA generation, and Fit Score synthesis
+- Google Gemini API
+  - `gemini-2.5-flash` for resume parsing, interview turns, and Fit Score synthesis
+  - `gemini-2.5-flash-native-audio-preview-12-2025` for Gemini Live token provisioning
 - pnpm
 
 ## Local development
 
 ```bash
 pnpm install
-cp .env.example .env.local   # then set OPENROUTER_API_KEY
+cp .env.example .env.local   # then set GEMINI_API_KEY
 PORT=4040 pnpm dev
 ```
 
@@ -28,6 +28,8 @@ Create a `.env.local` file in the project root (copy from below or create manual
 ```bash
 # Required: Gemini API key for all AI features
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
 ```
 
 ### Getting Your Gemini API Key
@@ -37,29 +39,28 @@ GEMINI_API_KEY=your_gemini_api_key_here
 3. Copy the key (starts with `AIza...`)
 4. Paste it in your `.env.local` file as shown above
 
-**Note:** Gemini Flash (gemini-2.0-flash) is free for most use cases with generous limits. You don't need OpenRouter or any other service.
+**Note:** This repo is Gemini-only. It does not require third-party LLM router or non-Google provider packages.
 
 | Variable | Purpose |
 | --- | --- |
-| `GEMINI_API_KEY` | Used by all `/api/*` routes for: resume parsing, interview questions, DNLA generation, Fit Score synthesis, and voice interview LLM calls. Without this, endpoints fall back to safe seed data so the UI never breaks. |
+| `GEMINI_API_KEY` | Required for resume parsing, interview questions, Fit Score synthesis, and Gemini Live token provisioning. Without it, AI endpoints return `503` instead of fake results. |
+| `GEMINI_TEXT_MODEL` | Text/multimodal Gemini model. Defaults to `gemini-2.5-flash`. |
+| `GEMINI_LIVE_MODEL` | Live API model. Defaults to `gemini-2.5-flash-native-audio-preview-12-2025`. |
 
 ## Voice Interview Pipeline
 
-The voice interview system adds real-time ASR → LLM → TTS to the existing interview flow.
+The Phase 1 interview uses a text fallback and browser speech input while Gemini Live credentials are being provisioned. `/api/gemini/live-token` mints short-lived tokens for the Live API once `GEMINI_API_KEY` is present.
 
 ### Flow
 1. Start session → `POST /api/interview/start`
-2. Send audio → `POST /api/interview/voice` (multipart or base64)
-3. Receive transcription, next question, TTS audio
+2. Send text answer → `POST /api/interview/voice`
+3. Receive the next question
 4. Repeat until `isDone: true`
 5. Get final results → `POST /api/interview/results`
 
 ### Audio Format
-- Frontend records using `MediaRecorder` (webm/opus by default)
-- Send as `multipart/form-data` with field `audio` (File) and `sessionId` (string)
-- Or send as JSON: `{ sessionId, audioBase64: "<base64>" }`
-- Max size: 10MB
-- Backend converts/normalizes as needed
+- Browser speech recognition can fill the text answer field.
+- Server audio upload is intentionally disabled; use Gemini Live with ephemeral tokens for production audio sessions.
 
 ## API
 
@@ -67,20 +68,21 @@ All `/api/interview/*` routes require `studentId`, `role`, and `mode`.
 
 - `POST /api/interview` — multi-turn interview question generation (text-based, existing)
 - `POST /api/interview/start` — start a voice session, returns `sessionId`
-- `POST /api/interview/voice` — receive audio, return transcription + next question + TTS audio
+- `POST /api/interview/voice` — receive a text answer and return the next question
+- `POST /api/gemini/live-token` — mint a Gemini Live ephemeral token
 - `GET /api/interview/status?sessionId=...` — get current session state
 - `POST /api/interview/results` — get final scores (only after `isDone: true`)
 - `POST /api/parse-resume` — PDF resume parsing
-- `POST /api/generate-dnla` — DNLA report generation
+- `POST /api/generate-dnla` — disabled until DNLA provider import is connected
 - `POST /api/generate-fit-score` — Final Fit Score report synthesis
 
 Candidate flow (no top nav, focused experience):
 
-- `/onboarding` — Step 01 Profile + Goal + Context (PDF resume parsed by Gemini 2.5 Pro)
-- `/student/[id]` — Candidate dossier (clears cached transcripts on entry)
-- `/student/[id]/interview/technical` — Step 02 AI Technical Interview (Claude)
-- `/student/[id]/dnla` — Step 03 DNLA Social Competence (Gemini-generated from transcripts)
-- `/student/[id]/interview/behavioural` — Step 04 AI Behavioural Interview (Claude)
+- `/onboarding` — Step 01 Profile + Goal + Context (PDF resume parsed by Gemini 2.5 Flash)
+- `/student/[id]` — Candidate workspace
+- `/student/[id]/interview/technical` — Step 02 AI Technical Interview (Gemini 2.5 Flash)
+- `/student/[id]/dnla` — Step 03 DNLA import placeholder
+- `/student/[id]/interview/behavioural` — Step 04 AI Behavioural Interview (Gemini 2.5 Flash)
 - `/student/[id]/fit-score` — Step 05 Fit Score Reveal (Gemini-generated, PRD §9 rubric)
 - `/student/[id]/development` — Step 06 Development Pathway
 
@@ -91,13 +93,13 @@ Marketing and B2B surfaces (with top nav):
 - `/institute/[id]` — Placement / Exam institute dashboard
 - `/recruiter/[id]` — Recruiter console with filtering
 - `/coach/[id]` — Coach workspace
-- `/coach-ai` — Phase 2 voice coaching preview
+- `/coach-ai` — hidden Phase 2 route with unavailable screen
 
 API:
 
 - `POST /api/interview` — multi-turn interview question generation
 - `POST /api/parse-resume` — PDF resume parsing
-- `POST /api/generate-dnla` — DNLA report generation
+- `POST /api/generate-dnla` — disabled until DNLA provider import is connected
 - `POST /api/generate-fit-score` — Final Fit Score report synthesis
 
 ## Smoke Test — Voice Pipeline
@@ -110,17 +112,19 @@ curl -X POST http://localhost:3000/api/interview/start \
 # → Returns: { "ok": true, "sessionId": "session_...", "mode": "technical" }
 ```
 
-### 2. Send first audio (text fallback — no ASR key needed for demo)
+### 2. Send first text answer
 ```bash
 curl -X POST http://localhost:3000/api/interview/voice \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"<session_id>","text":"I built a full-stack app using React and Node.js"}'
-# → Returns: { "ok": true, "nextQuestion": "...", "audioBase64": "...", "isDone": false }
+# → Returns: { "ok": true, "nextQuestion": "...", "isDone": false }
 ```
 
-### 3. Verify TTS audio plays
-- The `audioBase64` field contains base64-encoded MP3
-- Decode and save as `.mp3` to verify it plays
+### 3. Mint a Gemini Live token
+```bash
+curl -X POST http://localhost:3000/api/gemini/live-token
+# → Returns 503 without GEMINI_API_KEY, or a short-lived token when configured
+```
 
 ### 4. Check session state
 ```bash
@@ -137,7 +141,7 @@ curl -X POST http://localhost:3000/api/interview/results \
 # → Returns: { "ok": true, "generated": { "technical_score": 72, "fit_score": 70, ... } }
 ```
 
-Seeded in `lib/data.ts`. Three students (Priya, Rohan, Kabir), three exam aspirants (Anjali, Dhruv, Ira), two institutes (Atherix, Lakshya), one recruiter (Northbridge), one coach (Meera).
+`lib/data.ts` currently provides anonymized local workspace shells only. Production persistence, auth, and organization-specific records should be connected before real users are onboarded.
 
 ## Scripts
 

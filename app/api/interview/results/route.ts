@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
 import { getSession } from "@/lib/session-store";
 
 export const runtime = "nodejs";
@@ -13,24 +14,6 @@ function transcriptToText(msgs: any[]): string {
     .join("\n");
 }
 
-function extractJson(text: string): any | null {
-  const trimmed = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      try {
-        return JSON.parse(trimmed.slice(start, end + 1));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
-
 function clampScore(n: any, min = 0, max = 100): number {
   const v = Number(n);
   if (!isFinite(v)) return Math.round((min + max) / 2);
@@ -38,7 +21,7 @@ function clampScore(n: any, min = 0, max = 100): number {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
   let body: Body;
 
   try {
@@ -69,34 +52,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!apiKey) {
-    return NextResponse.json({
-      ok: true,
-      sessionId: session.sessionId,
-      generated: {
-        technical_score: 72,
-        behavioural_score: 68,
-        fit_score: 70,
-        success_probability: 65,
-        verdict: "Strong fit, develop further",
-        narrative: "Candidate demonstrates solid foundational skills with room for growth in advanced system design.",
-        technical_breakdown: [
-          { group: "Accuracy & Coverage", rows: [["Tech accuracy score", 74], ["Difficulty-weighted accuracy", 70]] },
-          { group: "Problem-solving depth", rows: [["Solution correctness", 72], ["Approach structure", 75], ["Multi-approach capability", 68]] },
-        ],
-        resume_breakdown: [
-          { group: "Skill matching", rows: [["Skill match score (vs JD)", 70], ["Core skill percentage", 75]] },
-        ],
-        behavioural_breakdown: [
-          { group: "Communication", rows: [["Communication clarity", 72], ["Structured answer (STAR)", 68]] },
-        ],
-        cross_flags: [
-          { label: "Tech vs Resume gap", verdict: "Aligned", tone: "ok" as const },
-          { label: "Confidence vs Accuracy gap", verdict: "Slight overconfidence observed", tone: "warn" as const },
-        ],
-      },
-      source: "demo-no-key",
-      meta: { turnCount: session.turnIndex, transcriptLength: session.transcript.length },
-    });
+    return NextResponse.json(
+      { ok: false, error: "Interview results service is not configured." },
+      { status: 503 }
+    );
   }
 
   const msgs = session.transcript.map((t: any) => ({
@@ -145,43 +104,13 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
   ]
 }
 
-Strictly valid JSON.`;
+  Strictly valid JSON.`;
 
   try {
-    const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            maxOutputTokens: 3000,
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!upstream.ok) {
-      const err = await upstream.text();
-      return NextResponse.json(
-        { ok: false, error: "Results generation failed.", upstreamStatus: upstream.status, upstreamError: err.slice(0, 200) },
-        { status: 502 }
-      );
-    }
-
-    const data = await upstream.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const parsed = extractJson(text);
-
-    if (!parsed) {
-      return NextResponse.json(
-        { ok: false, error: "The model didn't return a parseable report.", rawPreview: text.slice(0, 300) },
-        { status: 422 }
-      );
-    }
+    const { parsed, model } = await generateGeminiJson(apiKey, prompt, {
+      maxOutputTokens: 3000,
+      temperature: 0.2,
+    });
 
     const generated = {
       technical_score: clampScore(parsed.technical_score),
@@ -227,13 +156,21 @@ Strictly valid JSON.`;
       ok: true,
       sessionId: session.sessionId,
       generated,
-      source: "gemini-2.5-flash",
+      source: model,
       meta: { turnCount: session.turnIndex, transcriptLength: session.transcript.length },
     });
   } catch (e: any) {
+    const status = Number(e?.status) || 500;
     return NextResponse.json(
-      { ok: false, error: "Something went wrong while generating results.", detail: e?.message?.slice(0, 200) },
-      { status: 500 }
+      {
+        ok: false,
+        error:
+          status === 422
+            ? "The model didn't return a parseable report."
+            : "Something went wrong while generating results.",
+        detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200),
+      },
+      { status: status === 422 ? 422 : 502 }
     );
   }
 }

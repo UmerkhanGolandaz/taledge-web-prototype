@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,31 +15,6 @@ type Parsed = {
   summary?: string;
   skills?: string[];
   projects?: { title: string; stack: string[]; impact: string }[];
-};
-
-// Used only when no API key is configured (so the demo never breaks in dev).
-const demoFallback: Parsed = {
-  is_resume: true,
-  full_name: "Priya Raghavan",
-  email: "priya.r@atherix.edu",
-  institution: "Atherix Institute of Tech",
-  year_cohort: "Final Year · B.Tech CS",
-  target_role: "Full-stack Software Engineer",
-  summary:
-    "Final-year CS student with strong systems fundamentals. Built two production-grade web apps and contributed to an open-source ML library.",
-  skills: ["TypeScript", "React", "Node.js", "Python", "Postgres", "Docker"],
-  projects: [
-    {
-      title: "CampusKart · Hyperlocal commerce",
-      stack: ["Next.js", "Postgres", "Stripe"],
-      impact: "1,200 MAU across 3 campuses",
-    },
-    {
-      title: "OSS contributor · scikit-onnx",
-      stack: ["Python", "ONNX", "Pytest"],
-      impact: "7 merged PRs, 1 perf fix (-18% inference)",
-    },
-  ],
 };
 
 function extractJson(text: string): Parsed | null {
@@ -63,7 +39,7 @@ function extractJson(text: string): Parsed | null {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   let file: File | null = null;
   try {
@@ -79,28 +55,67 @@ export async function POST(req: NextRequest) {
 
   const filename = file.name;
   const sizeKb = Math.round(file.size / 1024);
+  const isPdf =
+    file.type === "application/pdf" || filename.toLowerCase().endsWith(".pdf");
+
+  if (!isPdf) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Please upload a PDF resume.",
+        filename,
+        sizeKb,
+      },
+      { status: 415 }
+    );
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Resume file is larger than 10 MB.",
+        filename,
+        sizeKb,
+      },
+      { status: 413 }
+    );
+  }
 
   if (!apiKey) {
-    return NextResponse.json({
-      ok: true,
-      parsed: demoFallback,
-      source: "demo-no-key",
-      filename,
-      sizeKb,
-    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Resume parsing service is not configured.",
+        filename,
+        sizeKb,
+      },
+      { status: 503 }
+    );
   }
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${file.type || "application/pdf"};base64,${base64}`;
+    
+    // Parse PDF text locally because OpenRouter doesn't support Gemini's native inlineData for PDFs
+    let textContent = "";
+    try {
+      const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+      const pdfData = await pdfParse(buffer);
+      textContent = pdfData.text;
+    } catch (err) {
+      console.error("[parse-resume] pdf-parse failed:", err);
+      return NextResponse.json({ ok: false, error: "Failed to extract text from PDF." }, { status: 422 });
+    }
 
-    const prompt = `You are a resume parser. Look at the attached PDF and decide whether it is a candidate's resume / CV.
+    const prompt = `You are an expert OCR system and resume parser. Look at the attached document text.
 
-If the PDF is NOT a resume (e.g. it's an invoice, contract, brochure, syllabus, article, etc.), return EXACTLY this JSON and nothing else:
+After reading the text, decide whether it is a candidate's resume / CV.
+
+If the document is NOT a resume (e.g. it's an invoice, contract, brochure, syllabus, article, etc.), return EXACTLY this JSON and nothing else:
 { "is_resume": false, "reason": "<one short sentence describing what the document actually is>" }
 
-If the PDF IS a resume, return EXACTLY this JSON shape (no markdown fences, no commentary):
+If the document IS a resume, return EXACTLY this JSON shape (no markdown fences, no commentary):
 {
   "is_resume": true,
   "full_name": "string (the candidate's name)",
@@ -119,69 +134,17 @@ If the PDF IS a resume, return EXACTLY this JSON shape (no markdown fences, no c
   ]
 }
 
+Here is the extracted document text:
+"""
+${textContent.slice(0, 15000)}
+"""
+
 Return strictly valid JSON. No prose before or after.`;
 
-    const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: file.type || "application/pdf",
-                    data: base64,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            maxOutputTokens: 1500,
-            temperature: 0.1,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!upstream.ok) {
-      const err = await upstream.text();
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Resume parsing service is unavailable. Please try again.",
-          upstreamStatus: upstream.status,
-          upstreamError: err.slice(0, 200),
-          filename,
-          sizeKb,
-        },
-        { status: 502 }
-      );
-    }
-
-    const data = await upstream.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-    const parsed = extractJson(text);
-
-    if (!parsed) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "We couldn't read this PDF. Please make sure the resume contains selectable text (not a scanned image).",
-          filename,
-          sizeKb,
-        },
-        { status: 422 }
-      );
-    }
+    const { parsed, model } = await generateGeminiJson<Parsed>(apiKey, prompt, {
+      maxOutputTokens: 1500,
+      temperature: 0.1,
+    });
 
     if (parsed.is_resume === false) {
       return NextResponse.json(
@@ -189,7 +152,7 @@ Return strictly valid JSON. No prose before or after.`;
           ok: false,
           error:
             parsed.reason ||
-            "This PDF doesn't appear to be a resume.",
+            "This document doesn't appear to be a resume.",
           notResume: true,
           filename,
           sizeKb,
@@ -198,7 +161,6 @@ Return strictly valid JSON. No prose before or after.`;
       );
     }
 
-    // Sanity check: a real resume should have at least name + (institution OR skills)
     if (
       !parsed.full_name ||
       (!parsed.institution && (!parsed.skills || parsed.skills.length === 0))
@@ -207,7 +169,7 @@ Return strictly valid JSON. No prose before or after.`;
         {
           ok: false,
           error:
-            "This PDF doesn't look like a resume · we couldn't extract a name and credentials.",
+            "This document doesn't look like a resume · we couldn't extract a name and credentials.",
           notResume: true,
           filename,
           sizeKb,
@@ -219,20 +181,24 @@ Return strictly valid JSON. No prose before or after.`;
     return NextResponse.json({
       ok: true,
       parsed,
-      source: "gemini-2.5-flash",
+      source: model,
       filename,
       sizeKb,
     });
   } catch (e: any) {
+    const status = Number(e?.status) || 500;
     return NextResponse.json(
       {
         ok: false,
-        error: "Something went wrong while parsing. Please try again.",
-        detail: e?.message?.slice(0, 200),
+        error:
+          status === 422
+            ? "We couldn't read this file. Please make sure it is a valid resume PDF."
+            : "Resume parsing service is unavailable. Please try again.",
+        detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200),
         filename,
         sizeKb,
       },
-      { status: 500 }
+      { status: status === 422 ? 422 : 502 }
     );
   }
 }

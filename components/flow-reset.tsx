@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 /**
- * Clears the candidate's locally cached interview transcripts and generated
- * reports (DNLA, Fit Score) so that landing on the dossier always restarts the
- * assessment from a clean slate.
+ * Explicitly clears the candidate's locally cached assessment state. This must
+ * never run automatically because Fit Score depends on captured transcripts.
  */
 export function FlowReset({ studentId }: { studentId: string }) {
   const [cleared, setCleared] = useState(false);
 
-  useEffect(() => {
+  function clearState() {
     try {
       const keys = [
         `taledge:interview:${studentId}:technical`,
@@ -29,14 +28,22 @@ export function FlowReset({ studentId }: { studentId: string }) {
     } catch {
       /* localStorage unavailable · non-fatal */
     }
-  }, [studentId]);
-
-  if (!cleared) return null;
+  }
 
   return (
-    <div className="mb-6 flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 text-xs text-ink-600">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-ink-900" />
-      Assessment state reset. Start fresh from Step 02.
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-xs text-ink-600">
+      <span>
+        {cleared
+          ? "Assessment state reset. Start fresh from Step 02."
+          : "Need to restart this assessment? Clear local interview and report state."}
+      </span>
+      <button
+        type="button"
+        onClick={clearState}
+        className="rounded-lg border border-ink-200 px-3 py-1.5 font-semibold text-ink-900 hover:bg-ink-50"
+      >
+        Start fresh
+      </button>
     </div>
   );
 }

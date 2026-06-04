@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSession } from "@/lib/session-store";
+import { createSession, updateSession } from "@/lib/session-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type Body = {
-  sessionId?: string;
   studentId: string;
   role: string;
-  mode: "technical" | "behavioural";
+  mode?: "technical" | "behavioural";
+  stage?: 1 | 2;
   resumeSummary?: string;
 };
 
 function generateSessionId(): string {
   return `vs_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function firstQuestion(mode: Body["mode"], role: string): string {
+  if (mode === "technical") {
+    return `Walk me through one project or problem that best proves your readiness for ${role}. Focus on the architecture, trade-offs, and the hardest decision you made.`;
+  }
+
+  return `Tell me about a time you received difficult feedback or faced a setback. What happened, what did you do, and what changed afterwards?`;
 }
 
 export async function POST(req: NextRequest) {
@@ -31,27 +39,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!["technical", "behavioural"].includes(body.mode)) {
+  const resolvedMode = body.stage === 1 ? "technical" : body.stage === 2 ? "behavioural" : body.mode;
+
+  if (!resolvedMode || !["technical", "behavioural"].includes(resolvedMode)) {
     return NextResponse.json(
-      { error: "mode must be 'technical' or 'behavioural'" },
+      { error: "mode must be 'technical' or 'behavioural', or stage must be 1 or 2" },
       { status: 400 }
     );
   }
 
-  const sessionId = body.sessionId || generateSessionId();
+  const sessionId = generateSessionId();
 
   const session = createSession({
     sessionId,
     studentId: body.studentId,
     role: body.role,
-    mode: body.mode,
+    mode: resolvedMode,
     resumeSummary: body.resumeSummary,
+  });
+  const question = firstQuestion(resolvedMode, body.role);
+  updateSession(session.sessionId, {
+    transcript: [{ timestamp: Date.now(), role: "assistant", content: question }],
   });
 
   return NextResponse.json({
     ok: true,
     sessionId: session.sessionId,
-    message: "Session created. Send audio to /api/interview/voice",
+    firstQuestion: question,
+    message: "Session created.",
     mode: session.mode,
   });
 }

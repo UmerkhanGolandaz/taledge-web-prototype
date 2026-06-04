@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const steps = ["Profile", "Goal", "Context", "Done"];
 
@@ -30,14 +31,12 @@ export default function Onboarding() {
   const [resumeError, setResumeError] = useState<string>("");
   const [parseMs, setParseMs] = useState<number>(0);
 
-  // Profile fields (controlled · auto-fill from parsed resume)
-  const [fullName, setFullName] = useState("Priya Raghavan");
-  const [email, setEmail] = useState("priya.r@atherix.edu");
-  const [institution, setInstitution] = useState("Atherix Institute of Tech");
-  const [yearCohort, setYearCohort] = useState("Final Year · B.Tech CS");
-  const [aspiration, setAspiration] = useState(
-    "Become a product-minded engineer who can own full-stack features end to end."
-  );
+  // Profile fields
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [yearCohort, setYearCohort] = useState("");
+  const [aspiration, setAspiration] = useState("");
   const [selectedRole, setSelectedRole] = useState("Full-stack Software Engineer");
   const [parsedExtras, setParsedExtras] = useState<{
     skills: string[];
@@ -47,10 +46,7 @@ export default function Onboarding() {
   } | null>(null);
 
   async function handleFile(file: File) {
-    if (
-      file.type !== "application/pdf" &&
-      !file.name.toLowerCase().endsWith(".pdf")
-    ) {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       setResumeFile({ name: file.name, sizeKb: Math.round(file.size / 1024) });
       setResumeStatus("error");
       setResumeError("Please upload a PDF file.");
@@ -77,10 +73,7 @@ export default function Onboarding() {
 
       if (!r.ok || !data.ok) {
         setResumeStatus("error");
-        setResumeError(
-          data?.error ||
-            "We couldn't parse this PDF. Please try a different resume file."
-        );
+        setResumeError(data?.error || "We couldn't parse this PDF. Please try a different resume file.");
         return;
       }
 
@@ -99,9 +92,7 @@ export default function Onboarding() {
       setResumeStatus("parsed");
     } catch (e: any) {
       setResumeStatus("error");
-      setResumeError(
-        e?.message || "Network error · please check your connection and retry."
-      );
+      setResumeError(e?.message || "Network error · please check your connection and retry.");
     }
   }
 
@@ -132,607 +123,534 @@ export default function Onboarding() {
           resumeProjects: parsedExtras?.projects || [],
         })
       );
-    } catch {
-      /* localStorage unavailable - non-fatal */
-    }
+    } catch {}
   }
 
+  const slideVariants = {
+    initial: { opacity: 0, y: 20, scale: 0.95, filter: "blur(10px)" },
+    animate: { 
+      opacity: 1, 
+      y: 0, 
+      scale: 1, 
+      filter: "blur(0px)",
+      transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+    },
+    exit: { 
+      opacity: 0, 
+      y: -20, 
+      scale: 0.95, 
+      filter: "blur(10px)", 
+      position: "absolute",
+      transition: { duration: 0.3, ease: "easeIn" }
+    }
+  };
+
   return (
-    <div className="relative overflow-hidden">
-      {/* Faint grid overlay across hero */}
-      <div className="bg-grid pointer-events-none absolute inset-x-0 top-0 -z-10 h-[280px] opacity-40" />
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 selection:bg-indigo-500/20 overflow-hidden relative font-sans">
+      {/* Dynamic Background */}
+      <div className="absolute inset-0 pointer-events-none z-0">
+        {/* Crisp Checkered Grid Pattern */}
+        <div 
+          className="absolute inset-0 opacity-40"
+          style={{
+            backgroundImage: `linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)`,
+            backgroundSize: `60px 60px`,
+            maskImage: `radial-gradient(ellipse 120% 120% at 50% 50%, #000 40%, transparent 100%)`,
+            WebkitMaskImage: `radial-gradient(ellipse 120% 120% at 50% 50%, #000 40%, transparent 100%)`
+          }}
+        />
 
-      {/* HERO STRIP */}
-      <section className="relative border-b border-ink-200 pt-8 pb-8 sm:pt-12 sm:pb-10">
-        <div className="container mx-auto max-w-5xl px-5 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="pill animate-fade-in">
-              <SparkIcon /> Onboarding · Track Selector
-            </div>
-            <Link href="/" className="btn-ghost !py-2 text-xs">
-              <ArrowLeft /> All roles
-            </Link>
+        {/* Very soft glowing orbs to break the flatness without overpowering the grid */}
+        <motion.div
+          animate={{ x: [0, 60, -60, 0], y: [0, -60, 60, 0] }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-10%] left-[0%] w-[50vw] h-[50vw] rounded-full bg-indigo-200/30 blur-[140px]"
+        />
+        <motion.div
+          animate={{ x: [0, -80, 80, 0], y: [0, 80, -80, 0] }}
+          transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-sky-200/30 blur-[150px]"
+        />
+      </div>
+
+      <div className="relative z-10 container mx-auto px-6 py-12 flex flex-col min-h-screen">
+        {/* Header */}
+        <motion.header 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex justify-between items-center mb-16"
+        >
+          <div className="flex items-center gap-3 bg-white/50 border border-white/60 rounded-full px-6 py-2.5 backdrop-blur-2xl shadow-lg shadow-indigo-500/5 hover:shadow-xl hover:bg-white/60 transition-all">
+            <SparklesIcon className="text-indigo-600" />
+            <span className="text-sm font-bold tracking-wide text-slate-800">Onboarding</span>
           </div>
+          <Link href="/" className="group flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors font-medium">
+            <ArrowLeftIcon className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            All roles
+          </Link>
+        </motion.header>
 
-          <h1 className="mt-7 max-w-4xl text-2xl font-bold tracking-tight leading-[1.1] text-ink-900 sm:text-3xl md:text-4xl">
-            Calibrate your Assessment
-          </h1>
-          <p className="mt-4 max-w-2xl text-base text-ink-500 sm:text-lg">
-            Four short steps. The system reconfigures its evaluation methodology, scoring
-            rubrics, and interaction model based on your answers.
-          </p>
-
-          {/* Stepper */}
-          <div className="mt-10 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+        {/* Stepper */}
+        <div className="max-w-4xl mx-auto w-full mb-12">
+          <div className="flex justify-between items-center relative">
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-slate-200 -z-10 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-indigo-500 to-sky-500"
+                initial={{ width: "0%" }}
+                animate={{ width: `${(step / (steps.length - 1)) * 100}%` }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              />
+            </div>
             {steps.map((s, i) => (
-              <div key={s} className="flex items-center gap-2 shrink-0">
-                <div
-                  className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-semibold transition ${
-                    i < step
-                      ? "bg-ink-900 text-white"
-                      : i === step
-                      ? "border-2 border-ink-900 text-ink-900"
-                      : "border border-ink-200 text-ink-400"
+              <div key={s} className="flex flex-col items-center gap-3">
+                <motion.div
+                  layout
+                  className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-sm transition-all duration-500 shadow-sm ${
+                    i < step 
+                      ? "bg-gradient-to-br from-indigo-500 to-sky-500 text-white border-none shadow-lg shadow-indigo-500/20" 
+                      : i === step 
+                      ? "bg-white/80 backdrop-blur-md border-[3px] border-indigo-500 text-indigo-600 shadow-lg shadow-indigo-500/10" 
+                      : "bg-white/50 backdrop-blur-md border border-white/60 text-slate-400"
                   }`}
                 >
-                  {i < step ? (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12l5 5L20 7" /></svg>
-                  ) : (
-                    i + 1
-                  )}
-                </div>
-                <span className={`font-medium ${i === step ? "text-ink-900" : "text-ink-500"}`}>
+                  {i < step ? <CheckIcon className="w-5 h-5" /> : i + 1}
+                </motion.div>
+                <span className={`text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${i <= step ? "text-slate-800" : "text-slate-400"}`}>
                   {s}
                 </span>
-                {i < steps.length - 1 && <span className="text-ink-300">·</span>}
               </div>
             ))}
           </div>
         </div>
-      </section>
 
-      {/* CARD CONTENT */}
-      <section className="py-8 sm:py-12">
-        <div className="container mx-auto max-w-3xl px-5 sm:px-6">
-          <div className="card p-5 sm:p-8">
-            {step === 0 && (
-              <div className="animate-fade-in">
-                <div className="pill">
-                  <UserIcon /> Step 01 · Profile
-                </div>
-                <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
-                  Tell us about yourself
-                </h2>
-                <p className="mt-2 text-sm text-ink-500">
-                  Your profile shapes the assessment. Private until you choose to share.
-                </p>
+        {/* Main Content Area */}
+        <div className="flex-1 flex items-center justify-center w-full">
+          <div className="relative w-full max-w-2xl">
+            <AnimatePresence mode="wait">
+              {step === 0 && (
+                <motion.div
+                  key="step-0"
+                  variants={slideVariants as any}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-sky-500 opacity-80" />
+                  
+                  <div className="mb-10 text-center">
+                    <h2 className="text-3xl sm:text-[2.75rem] font-black text-slate-900 tracking-tight mb-4 leading-tight">
+                      Tell us about yourself
+                    </h2>
+                    <p className="text-slate-500 font-medium">Your profile shapes the assessment. Upload your resume to auto-fill.</p>
+                  </div>
 
-                {/* Resume Upload · Gemini 2.5 Pro */}
-                <div className="mt-6">
-                  <label className="label flex items-center justify-between">
-                    <span>Upload resume · auto-fills your profile</span>
-                    <span className="text-[10px] font-medium normal-case tracking-normal text-ink-400">
-                      Parsed by Gemini 2.5 Pro · via OpenRouter
-                    </span>
-                  </label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={onFileChange}
-                    className="hidden"
-                  />
+                  {/* Upload Area */}
+                  <div className="mb-8">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={onFileChange}
+                      className="hidden"
+                    />
 
-                  {resumeStatus === "idle" && (
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      onDrop={onDrop}
-                      onDragOver={(e) => e.preventDefault()}
-                      className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-ink-300 bg-ink-50 px-4 py-5 transition hover:border-ink-900 hover:bg-white"
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className="grid h-11 w-11 place-items-center rounded-lg border border-ink-200 bg-white text-ink-900">
-                        <DocIcon />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-ink-900">
-                          Drop your resume PDF here, or click to upload
-                        </div>
-                        <div className="text-xs text-ink-500">
-                          Max 10 MB · We&apos;ll auto-populate the fields above
-                        </div>
-                      </div>
-                      <span className="chip-soft shrink-0">Choose file</span>
-                    </div>
-                  )}
-
-                  {resumeStatus === "parsing" && (
-                    <div className="mt-2 flex items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-4">
-                      <div className="grid h-11 w-11 place-items-center rounded-lg border border-ink-200 bg-ink-50 text-ink-900">
-                        <DocIcon />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-ink-900">
-                          {resumeFile?.name}
-                        </div>
-                        <div className="text-xs text-ink-500">
-                          {resumeFile?.sizeKb} KB · Parsing with Gemini 2.5 Pro…
-                        </div>
-                      </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2.5 py-1 text-[11px] font-medium text-ink-700">
-                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-ink-900" />
-                        Parsing
-                      </span>
-                    </div>
-                  )}
-
-                  {resumeStatus === "parsed" && (
-                    <div className="mt-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-4">
-                      <div className="grid h-11 w-11 place-items-center rounded-lg border border-emerald-200 bg-white text-ink-900">
-                        <DocIcon />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-ink-900">
-                          {resumeFile?.name}
-                        </div>
-                        <div className="text-xs text-ink-500">
-                          {resumeFile?.sizeKb} KB · parsed in {(parseMs / 1000).toFixed(1)}s
-                          {resumeSource && (
-                            <span className="ml-1 text-ink-400">· {resumeSource}</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
+                    {resumeStatus === "idle" && (
+                      <div
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-xs font-medium text-ink-700 underline-offset-4 hover:underline"
+                        onDrop={onDrop}
+                        onDragOver={(e) => e.preventDefault()}
+                        className="group relative flex flex-col items-center justify-center p-12 rounded-[2rem] border-2 border-dashed border-slate-300 hover:border-indigo-400 bg-white/40 hover:bg-white/60 backdrop-blur-sm transition-all duration-300 cursor-pointer overflow-hidden hover:shadow-xl hover:shadow-indigo-500/5"
                       >
-                        Replace
-                      </button>
-                      <span className="chip-success shrink-0">Parsed</span>
-                    </div>
-                  )}
-
-                  {resumeStatus === "error" && (
-                    <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-4">
-                      <div className="flex items-start gap-3">
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-rose-200 bg-white text-base font-bold text-rose-600">
-                          !
+                        <div className="w-16 h-16 rounded-2xl bg-white border border-white/60 shadow-lg shadow-indigo-500/5 flex items-center justify-center mb-5 group-hover:scale-110 group-hover:-translate-y-1 group-hover:rotate-3 transition-transform duration-300">
+                          <DocIcon className="w-8 h-8 text-indigo-500" />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-ink-900">
-                            {resumeFile?.name
-                              ? `"${resumeFile.name}" isn't a valid resume`
-                              : "Couldn't parse this file"}
-                          </div>
-                          <div className="mt-1 text-xs text-ink-600">{resumeError}</div>
-                          <div className="mt-2 text-[11px] text-ink-500">
-                            Upload a resume PDF (CV / candidate profile) · Gemini will
-                            auto-fill your profile.
-                          </div>
+                        <div className="text-lg font-bold text-slate-700 mb-1">Drop your resume PDF</div>
+                        <div className="text-sm font-medium text-slate-400 mb-4">Max 10 MB · Gemini 2.5 Pro Powered</div>
+                        <button className="px-6 py-2 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors">
+                          Choose File
+                        </button>
+                      </div>
+                    )}
+
+                    {resumeStatus === "parsing" && (
+                      <div className="flex items-center gap-4 p-6 rounded-3xl border border-indigo-200 bg-indigo-50 relative overflow-hidden">
+                        <motion.div 
+                          className="absolute inset-0 bg-gradient-to-r from-transparent via-indigo-200/50 to-transparent"
+                          animate={{ x: ["-100%", "200%"] }}
+                          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                        />
+                        <div className="w-12 h-12 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center animate-pulse z-10">
+                          <DocIcon className="w-6 h-6 text-indigo-600" />
+                        </div>
+                        <div className="flex-1 min-w-0 z-10">
+                          <div className="truncate text-slate-900 font-bold">{resumeFile?.name}</div>
+                          <div className="text-sm font-medium text-slate-500">{resumeFile?.sizeKb} KB · AI Parsing...</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {resumeStatus === "parsed" && (
+                      <div className="flex items-center gap-4 p-6 rounded-3xl border border-emerald-200 bg-emerald-50 relative">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center">
+                          <CheckIcon className="w-6 h-6 text-emerald-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-slate-900 font-bold">{resumeFile?.name}</div>
+                          <div className="text-sm font-medium text-emerald-600/80">Parsed in {(parseMs / 1000).toFixed(1)}s</div>
                         </div>
                         <button
-                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-sm font-bold text-emerald-600 hover:text-emerald-700 underline-offset-4 hover:underline"
+                        >
+                          Replace
+                        </button>
+                      </div>
+                    )}
+
+                    {resumeStatus === "error" && (
+                      <div className="flex items-center gap-4 p-6 rounded-3xl border border-red-200 bg-red-50">
+                        <div className="w-12 h-12 rounded-xl bg-red-100 border border-red-200 flex items-center justify-center">
+                          <span className="text-red-600 font-extrabold text-xl">!</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-slate-900 font-bold">Upload Failed</div>
+                          <div className="text-sm font-medium text-red-600/80">{resumeError}</div>
+                        </div>
+                        <button
                           onClick={() => {
                             setResumeStatus("idle");
                             setResumeFile(null);
                             setResumeError("");
                             fileInputRef.current?.click();
                           }}
-                          className="btn-ghost shrink-0 !px-3 !py-1.5 text-xs"
+                          className="px-4 py-2 rounded-full bg-white border border-slate-200 shadow-sm hover:bg-slate-50 text-slate-700 font-bold text-sm transition-colors"
                         >
-                          Try again
+                          Retry
                         </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field
-                    label="Full name"
-                    value={fullName}
-                    onChange={setFullName}
-                    autoFilled={resumeStatus === "parsed"}
-                  />
-                  <Field
-                    label="Email"
-                    value={email}
-                    onChange={setEmail}
-                    autoFilled={resumeStatus === "parsed"}
-                  />
-                  <Field
-                    label="Institution"
-                    value={institution}
-                    onChange={setInstitution}
-                    autoFilled={resumeStatus === "parsed"}
-                  />
-                  <Field
-                    label="Year / Cohort"
-                    value={yearCohort}
-                    onChange={setYearCohort}
-                    autoFilled={resumeStatus === "parsed"}
-                  />
-                </div>
-                <div className="mt-4">
-                  <label className="label">Career aspiration</label>
-                  <textarea
-                    value={aspiration}
-                    onChange={(e) => setAspiration(e.target.value)}
-                    rows={3}
-                    className="input mt-1.5 resize-none"
-                    placeholder="What kind of work and growth are you aiming for?"
-                  />
-                </div>
-
-                {/* Parsed preview */}
-                {resumeStatus === "parsed" && parsedExtras && (parsedExtras.skills.length > 0 || parsedExtras.projects.length > 0) && (
-                  <div className="mt-5 rounded-xl border border-ink-200 bg-white p-4">
-                    <div className="label">Extracted from resume</div>
-                    {parsedExtras.target_role && (
-                      <div className="mt-2 text-sm">
-                        <span className="text-ink-500">Target role · </span>
-                        <span className="font-medium text-ink-900">
-                          {parsedExtras.target_role}
-                        </span>
-                      </div>
-                    )}
-                    {parsedExtras.summary && (
-                      <p className="mt-2 text-sm text-ink-600">{parsedExtras.summary}</p>
-                    )}
-                    {parsedExtras.skills.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {parsedExtras.skills.slice(0, 12).map((s) => (
-                          <span key={s} className="chip">{s}</span>
-                        ))}
-                      </div>
-                    )}
-                    {parsedExtras.projects.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {parsedExtras.projects.slice(0, 3).map((p, i) => (
-                          <div key={i} className="rounded-lg border border-ink-200 bg-ink-50 p-3">
-                            <div className="text-sm font-semibold text-ink-900">{p.title}</div>
-                            {p.stack?.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {p.stack.slice(0, 6).map((t) => (
-                                  <span key={t} className="text-[10px] font-medium text-ink-500">
-                                    {t}
-                                  </span>
-                                )).reduce((acc: React.ReactNode[], el, idx) => acc.concat(idx > 0 ? [<span key={`sep-${idx}`} className="text-[10px] text-ink-300">·</span>, el] : [el]), [])}
-                              </div>
-                            )}
-                            {p.impact && (
-                              <div className="mt-1 text-xs text-ink-500">{p.impact}</div>
-                            )}
-                          </div>
-                        ))}
                       </div>
                     )}
                   </div>
-                )}
 
-                <div className="mt-8 flex justify-end">
-                  <button onClick={() => setStep(1)} className="btn-primary">
-                    Continue
-                    <ArrowRight />
-                  </button>
-                </div>
-              </div>
-            )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+                    <Field label="Full name" value={fullName} onChange={setFullName} autoFilled={resumeStatus === "parsed"} />
+                    <Field label="Email" value={email} onChange={setEmail} autoFilled={resumeStatus === "parsed"} />
+                    <Field label="Institution" value={institution} onChange={setInstitution} autoFilled={resumeStatus === "parsed"} />
+                    <Field label="Year / Cohort" value={yearCohort} onChange={setYearCohort} autoFilled={resumeStatus === "parsed"} />
+                  </div>
 
-            {step === 1 && (
-              <div className="animate-fade-in">
-                <div className="pill">
-                  <TargetIcon /> Step 02 · Goal
-                </div>
-                <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
-                  What kind of success are you after?
-                </h2>
-                <p className="mt-2 text-sm text-ink-500">
-                  This is the critical branching point. The system reconfigures based on
-                  your answer.
-                </p>
+                  <div className="mb-8">
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Career aspiration</label>
+                    <textarea
+                      value={aspiration}
+                      onChange={(e) => setAspiration(e.target.value)}
+                      rows={3}
+                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none shadow-sm font-medium"
+                      placeholder="What kind of work and growth are you aiming for?"
+                    />
+                  </div>
 
-                <div className="mt-7 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <Choice
-                    active={track === "placement"}
-                    onClick={() => setTrack("placement")}
-                    tag="Track 01"
-                    title="Placement & Career Success"
-                    desc="Preparing for jobs, interviews, and the transition from education to employment."
-                    icon={<BriefcaseIcon />}
-                  />
-                  <Choice
-                    active={track === "exam"}
-                    onClick={() => setTrack("exam")}
-                    tag="Track 02"
-                    title="Competitive Exam Success"
-                    desc="Preparing for high-stakes exams (UPSC / GATE / GMAT) over months or years."
-                    icon={<BookIcon />}
-                  />
-                </div>
+                  <div className="flex justify-end">
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setStep(1)} 
+                      className="group flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-500/40 hover:-translate-y-1 transition-all duration-300"
+                    >
+                      Continue <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
 
-                <div className="mt-8 flex flex-wrap justify-between gap-2">
-                  <button onClick={() => setStep(0)} className="btn-ghost">
-                    <ArrowLeft /> Back
-                  </button>
-                  <button
-                    disabled={!track}
-                    onClick={() => setStep(2)}
-                    className="btn-primary disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Continue
-                    <ArrowRight />
-                  </button>
-                </div>
-              </div>
-            )}
+              {step === 1 && (
+                <motion.div
+                  key="step-1"
+                  variants={slideVariants as any}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 to-indigo-500 opacity-80" />
+                  
+                  <div className="mb-10 text-center">
+                    <h2 className="text-3xl sm:text-[2.75rem] font-black text-slate-900 tracking-tight mb-4 leading-tight">
+                      Your primary objective?
+                    </h2>
+                    <p className="text-slate-500 font-medium">Select your track to calibrate the system appropriately.</p>
+                  </div>
 
-            {step === 2 && track === "placement" && (
-              <div className="animate-fade-in">
-                <div className="pill">
-                  <BriefcaseIcon /> Step 03 · Role Context
-                </div>
-                <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
-                  Which role are you targeting?
-                </h2>
-                <p className="mt-2 text-sm text-ink-500">
-                  The role grounds your interview questions, DNLA benchmarks, and Fit Score
-                  weighting.
-                </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+                    <Choice
+                      active={track === "placement"}
+                      onClick={() => setTrack("placement")}
+                      tag="Track 01"
+                      title="Placement & Career"
+                      desc="Job preparation, mock interviews, and industry readiness."
+                      icon={<BriefcaseIcon className="w-6 h-6" />}
+                    />
+                    <Choice
+                      active={track === "exam"}
+                      onClick={() => setTrack("exam")}
+                      tag="Track 02"
+                      title="Competitive Exams"
+                      desc="Long-term preparation for UPSC, GATE, GMAT, etc."
+                      icon={<BookIcon className="w-6 h-6" />}
+                    />
+                  </div>
 
-                <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    "Full-stack Software Engineer",
-                    "Backend Engineer",
-                    "Frontend Engineer",
-                    "Data / ML Engineer",
-                    "Product Manager",
-                    "Consultant · Strategy",
-                  ].map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setSelectedRole(r)}
-                      className={`rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition ${
-                        selectedRole === r
-                          ? "border-ink-900 bg-ink-900 text-white"
-                          : "border-ink-200 bg-white text-ink-900 hover:border-ink-900"
+                  <div className="flex justify-between items-center">
+                    <button onClick={() => setStep(0)} className="group flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium">
+                      <ArrowLeftIcon className="w-4 h-4 transition-transform group-hover:-translate-x-1" /> Back
+                    </button>
+                    <motion.button 
+                      whileHover={track ? { scale: 1.02 } : {}}
+                      whileTap={track ? { scale: 0.98 } : {}}
+                      disabled={!track}
+                      onClick={() => setStep(2)} 
+                      className={`group flex items-center gap-2 px-8 py-4 rounded-full font-bold transition-all duration-300 ${
+                        track ? "bg-indigo-600 text-white shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-500/40 hover:-translate-y-1" : "bg-slate-100 text-slate-400 cursor-not-allowed"
                       }`}
                     >
-                      {r}
+                      Continue <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
+
+              {step === 2 && (
+                <motion.div
+                  key="step-2"
+                  variants={slideVariants as any}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-sky-500 opacity-80" />
+                  
+                  <div className="mb-10 text-center">
+                    <h2 className="text-3xl sm:text-[2.75rem] font-black text-slate-900 tracking-tight mb-4 leading-tight">
+                      {track === "placement" ? "Which role are you targeting?" : "Which exam are you preparing for?"}
+                    </h2>
+                    <p className="text-slate-500 font-medium">
+                      {track === "placement" 
+                        ? "This grounds your interview questions and Fit Score weighting." 
+                        : "This wires in the right success benchmarks and mock-test cadence."}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
+                    {(track === "placement" 
+                      ? ["Full-stack Software Engineer", "Backend Engineer", "Frontend Engineer", "Data / ML Engineer", "Product Manager", "Consultant · Strategy"]
+                      : ["UPSC Civil Services", "GATE · CSE", "CAT", "GMAT", "GRE", "Other"]
+                    ).map((r) => (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        key={r}
+                        onClick={() => setSelectedRole(r)}
+                        className={`p-5 rounded-2xl border text-left transition-all duration-300 ${
+                          selectedRole === r 
+                            ? "border-indigo-500 bg-indigo-50/80 shadow-md shadow-indigo-500/10" 
+                            : "border-white/60 bg-white/50 backdrop-blur-md hover:border-indigo-300 hover:bg-white/80 hover:shadow-lg hover:shadow-indigo-500/5"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-bold ${selectedRole === r ? "text-indigo-700" : "text-slate-700"}`}>{r}</span>
+                          {selectedRole === r && (
+                            <motion.div layoutId="check">
+                              <CheckIcon className="w-5 h-5 text-indigo-600" />
+                            </motion.div>
+                          )}
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <button onClick={() => setStep(1)} className="group flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium">
+                      <ArrowLeftIcon className="w-4 h-4 transition-transform group-hover:-translate-x-1" /> Back
                     </button>
-                  ))}
-                </div>
-                <div className="mt-8 flex justify-between">
-                  <button onClick={() => setStep(1)} className="btn-ghost">
-                    <ArrowLeft /> Back
-                  </button>
-                  <button onClick={() => setStep(3)} className="btn-primary">
-                    Continue
-                    <ArrowRight />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && track === "exam" && (
-              <div className="animate-fade-in">
-                <div className="pill">
-                  <BookIcon /> Step 03 · Exam Context
-                </div>
-                <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
-                  Which exam are you preparing for?
-                </h2>
-                <p className="mt-2 text-sm text-ink-500">
-                  Your exam selection wires in the right success benchmarks, mock-test cadence,
-                  and longitudinal trackers.
-                </p>
-
-                <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {["UPSC Civil Services", "GATE · CSE", "CAT", "GMAT", "GRE", "Other"].map((r, i) => (
-                    <button
-                      key={r}
-                      className={`rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition ${
-                        i === 0
-                          ? "border-ink-900 bg-ink-900 text-white"
-                          : "border-ink-200 bg-white text-ink-900 hover:border-ink-900"
-                      }`}
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setStep(3)} 
+                      className="group flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-500/40 hover:-translate-y-1 transition-all duration-300"
                     >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-8 flex justify-between">
-                  <button onClick={() => setStep(1)} className="btn-ghost">
-                    <ArrowLeft /> Back
-                  </button>
-                  <button onClick={() => setStep(3)} className="btn-primary">
-                    Continue
-                    <ArrowRight />
-                  </button>
-                </div>
-              </div>
-            )}
+                      Continue <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
 
-            {step === 3 && (
-              <div className="animate-fade-in text-center">
-                <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-ink-900 text-white">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M5 12l5 5L20 7" />
-                  </svg>
-                </div>
-                <div className="mt-6 pill mx-auto">
-                  <SparkIcon /> Calibration complete
-                </div>
-                <h2 className="mt-5 text-lg font-bold tracking-tight text-ink-900 sm:text-xl md:text-2xl">
-                  Routed into {track === "exam" ? "Track 02" : "Track 01"}
-                </h2>
-                <p className="mt-3 text-sm text-ink-500 sm:text-base">
-                  {track === "exam"
-                    ? "Competitive Exam Success · longitudinal tracking + resilience monitoring."
-                    : "Placement & Career Success · DNLA + AI interviews + Fit Score."}
-                </p>
-                <p className="mx-auto mt-2 max-w-md text-xs text-ink-500">
-                  The platform has configured your evaluation methodology and interaction
-                  model.
-                </p>
-                <div className="mt-8 flex flex-wrap justify-center gap-2">
-                  <Link
-                    href={
-                      track === "exam"
-                        ? "/exam/anjali"
-                        : "/student/priya/interview/technical"
-                    }
-                    className="btn-primary"
-                    onClick={persistDemoProfile}
+              {step === 3 && (
+                <motion.div
+                  key="step-3"
+                  variants={slideVariants as any}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-10 sm:p-16 shadow-2xl shadow-indigo-500/10 relative overflow-hidden text-center"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-indigo-500 opacity-80" />
+                  
+                  <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1, rotate: 360 }}
+                    transition={{ type: "spring", damping: 15, stiffness: 100, delay: 0.2 }}
+                    className="w-24 h-24 mx-auto bg-gradient-to-br from-indigo-500 to-sky-500 rounded-full flex items-center justify-center mb-8 shadow-xl shadow-indigo-200"
                   >
-                    {track === "exam"
-                      ? "Begin Track 02 · DNLA Success Factor"
-                      : "Begin Step 02 · Technical Interview"}
-                    <ArrowRight />
-                  </Link>
-                  <Link href="/student/priya" className="btn-ghost">
-                    Skip to dashboard
-                  </Link>
-                </div>
-              </div>
-            )}
+                    <CheckIcon className="w-12 h-12 text-white" />
+                  </motion.div>
+
+                  <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">
+                    Calibration Complete
+                  </h2>
+                  <p className="text-lg text-slate-600 font-medium mb-2">
+                    Routed into <span className="text-indigo-600 font-bold">{track === "exam" ? "Track 02" : "Track 01"}</span>
+                  </p>
+                  <p className="text-slate-500 font-medium max-w-sm mx-auto mb-10">
+                    The platform has configured your evaluation methodology, benchmarks, and interaction model.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <Link
+                      href={track === "exam" ? "/exam/anjali" : "/student/priya/interview/technical"}
+                      onClick={persistDemoProfile}
+                      className="w-full sm:w-auto"
+                    >
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="group w-full flex justify-center items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-500/40 hover:-translate-y-1 transition-all duration-300"
+                      >
+                        {track === "exam" ? "Begin Track 02" : "Begin Technical Interview"}
+                        <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                      </motion.button>
+                    </Link>
+                    <Link href="/student/priya" className="w-full sm:w-auto text-slate-500 hover:text-slate-900 font-medium transition-colors py-4">
+                      Skip to dashboard
+                    </Link>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  autoFilled = false,
-}: {
-  label: string;
-  value: string;
-  onChange?: (v: string) => void;
-  autoFilled?: boolean;
-}) {
+function Field({ label, value, onChange, autoFilled = false }: any) {
   return (
-    <div>
-      <label className="label flex items-center justify-between">
-        <span>{label}</span>
+    <div className="relative group">
+      <label className="flex items-center justify-between text-sm font-bold text-slate-700 mb-2">
+        {label}
         {autoFilled && (
-          <span className="text-[9px] font-medium normal-case tracking-normal text-emerald-700">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
             Auto-filled
           </span>
         )}
       </label>
-      <input
-        value={value}
-        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-        className={`input mt-1.5 ${autoFilled ? "border-emerald-300" : ""}`}
-      />
+      <div className="relative">
+        <input
+          value={value}
+          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+          className={`w-full border rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-300 font-medium shadow-sm hover:shadow-md ${
+            autoFilled ? "border-emerald-200 bg-emerald-50/50" : "border-white/60 bg-white/50 backdrop-blur-md hover:bg-white/80"
+          }`}
+        />
+      </div>
     </div>
   );
 }
 
-function Choice({
-  active,
-  onClick,
-  tag,
-  title,
-  desc,
-  icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  tag: string;
-  title: string;
-  desc: string;
-  icon: React.ReactNode;
-}) {
+function Choice({ active, onClick, tag, title, desc, icon }: any) {
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`text-left rounded-2xl border p-5 transition ${
+      className={`text-left rounded-3xl p-6 border transition-all duration-300 relative overflow-hidden ${
         active
-          ? "border-ink-900 bg-ink-50 ring-1 ring-ink-900"
-          : "border-ink-200 bg-white hover:border-ink-900"
+          ? "border-indigo-500 bg-indigo-50/80 shadow-md shadow-indigo-500/10"
+          : "border-white/60 bg-white/40 backdrop-blur-md hover:border-indigo-300 hover:bg-white/60 hover:shadow-lg hover:shadow-indigo-500/5"
       }`}
     >
-      <div className="flex items-center justify-between">
-        <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200 bg-ink-50 text-ink-900">
-          {icon}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-6">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${
+            active ? "bg-indigo-600 text-white" : "bg-white/50 border border-white/60 text-slate-500 group-hover:bg-white group-hover:text-indigo-600 transition-colors"
+          }`}>
+            {icon}
+          </div>
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
+            active ? "border-indigo-200 text-indigo-700 bg-indigo-100" : "border-white/60 text-slate-500 bg-white/50"
+          }`}>
+            {tag}
+          </span>
         </div>
-        <span className="label">{tag}</span>
+        <h3 className={`text-xl font-extrabold mb-2 ${active ? "text-slate-900" : "text-slate-800"}`}>{title}</h3>
+        <p className={`text-sm font-medium leading-relaxed ${active ? "text-slate-700" : "text-slate-500"}`}>{desc}</p>
       </div>
-      <div className="mt-5 text-lg font-bold tracking-tight text-ink-900">{title}</div>
-      <div className="mt-1.5 text-sm leading-relaxed text-ink-500">{desc}</div>
-    </button>
+    </motion.button>
   );
 }
 
 /* Icons */
-function ArrowRight() {
+function ArrowRightIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M5 12h14M13 5l7 7-7 7" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M5 12h14M13 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
-function ArrowLeft() {
+function ArrowLeftIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M19 12H5M11 19l-7-7 7-7" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M19 12H5M11 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
-function SparkIcon() {
+function SparklesIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3l1.9 5.7L20 10l-5 4 1.5 6L12 17l-4.5 3L9 14l-5-4 6.1-1.3z" />
     </svg>
   );
 }
-function UserIcon() {
+function BriefcaseIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-function TargetIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  );
-}
-function BriefcaseIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="7" width="20" height="14" rx="2" />
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </svg>
   );
 }
-function BookIcon() {
+function BookIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   );
 }
-function DocIcon() {
+function DocIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
       <path d="M9 13h6M9 17h6" />
+    </svg>
+  );
+}
+function CheckIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }
