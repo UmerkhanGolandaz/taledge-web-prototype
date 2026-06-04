@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -28,35 +29,6 @@ type Body = {
   dnlaRisks?: string[];
 };
 
-function demoGenerated(body: Body) {
-  return {
-    technical_score: 74,
-    behavioural_score: 71,
-    fit_score: 73,
-    success_probability: 76,
-    verdict: "Promising fit with focused growth areas",
-    narrative: `${body.candidateName || "The candidate"} demonstrates relevant experience for ${body.targetRole || "the target role"} and communicates a practical approach to problem solving. Resume evidence and interview responses show a credible foundation, with deeper system design validation recommended. The next development focus should be structured technical depth and clearer articulation of trade-offs.`,
-    technical_breakdown: [
-      { group: "Problem-solving depth", rows: [["Solution correctness", 76], ["Approach structure", 74], ["Trade-off analysis", 68]] },
-      { group: "Thinking quality", rows: [["Reasoning clarity", 78], ["Conceptual correctness", 73], ["Error recovery", 70]] },
-      { group: "Coding", rows: [["Code correctness", 72], ["Code readability", 76], ["Edge-case awareness", 69]] },
-    ],
-    resume_breakdown: [
-      { group: "Skill matching", rows: [["Skill match score (vs JD)", 79], ["Core skill percentage", 76]] },
-      { group: "Project quality", rows: [["Project relevance", 77], ["Project impact", 72]] },
-    ],
-    behavioural_breakdown: [
-      { group: "Communication", rows: [["Communication clarity", 74], ["Structured answers", 69]] },
-      { group: "Ownership & attitude", rows: [["Ownership score", 75], ["Accountability", 73]] },
-    ],
-    cross_flags: [
-      { label: "Tech vs Resume gap", verdict: "Resume claims are broadly supported by interview evidence.", tone: "ok" },
-      { label: "Confidence vs Accuracy gap", verdict: "Confidence is mostly calibrated; validate depth with one extended coding round.", tone: "warn" },
-      { label: "Role readiness", verdict: "Candidate is suitable for a structured next-stage interview.", tone: "ok" },
-    ],
-  };
-}
-
 function transcriptToText(msgs: Msg[] | undefined): string {
   if (!msgs || msgs.length === 0) return "(no responses)";
   return msgs
@@ -67,28 +39,60 @@ function transcriptToText(msgs: Msg[] | undefined): string {
     .join("\n");
 }
 
-function extractJson(text: string): any | null {
-  const trimmed = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      try {
-        return JSON.parse(trimmed.slice(start, end + 1));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
-
 function clamp(n: any, min = 0, max = 100): number {
   const v = Number(n);
   if (!isFinite(v)) return Math.round((min + max) / 2);
   return Math.max(min, Math.min(max, Math.round(v)));
+}
+
+function normalizeMessages(value: unknown): Msg[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((m) => m && typeof m === "object")
+    .map((m: any) => ({
+      role: (m.role === "assistant" ? "assistant" : "user") as Msg["role"],
+      content: String(m.content || "").slice(0, 4000),
+    }))
+    .filter((m) => m.content.trim().length > 0);
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function normalizeProjects(value: unknown): NonNullable<Body["resumeProjects"]> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((p) => p && typeof p === "object")
+    .slice(0, 10)
+    .map((p: any) => ({
+      title: String(p.title || "Untitled project").slice(0, 120),
+      stack: normalizeStringArray(p.stack).slice(0, 12),
+      impact: String(p.impact || "").slice(0, 240),
+    }));
+}
+
+function normalizeDnla(value: unknown): DnlaItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((d) => d && typeof d === "object")
+    .map((d: any) => ({
+      competency: String(d.competency || "").slice(0, 120),
+      group: String(d.group || "DNLA").slice(0, 120),
+      score: Number(d.score),
+      benchmark: Number(d.benchmark),
+      insight: String(d.insight || "").slice(0, 300),
+    }))
+    .filter(
+      (d) =>
+        d.competency &&
+        Number.isFinite(d.score) &&
+        Number.isFinite(d.benchmark)
+    );
 }
 
 const RUBRIC = {
@@ -121,7 +125,7 @@ function rubricToPromptList(rubric: Record<string, readonly string[]>): string {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
   let body: Body;
   try {
     body = (await req.json()) as Body;
@@ -129,8 +133,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
   }
 
-  const techCount = body.technicalQA?.filter((m) => m.role === "user").length || 0;
-  const behavCount = body.behaviouralQA?.filter((m) => m.role === "user").length || 0;
+  if (!body.studentId || !body.candidateName || !body.targetRole) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "studentId, candidateName, and targetRole are required.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const technicalQA = normalizeMessages(body.technicalQA);
+  const behaviouralQA = normalizeMessages(body.behaviouralQA);
+  const resumeSkills = normalizeStringArray(body.resumeSkills);
+  const resumeProjects = normalizeProjects(body.resumeProjects);
+  const dnlaItems = normalizeDnla(body.dnla);
+  const dnlaStrengths = normalizeStringArray(body.dnlaStrengths);
+  const dnlaDevelopmentAreas = normalizeStringArray(body.dnlaDevelopmentAreas);
+  const dnlaRisks = normalizeStringArray(body.dnlaRisks);
+
+  const techCount = technicalQA.filter((m) => m.role === "user").length;
+  const behavCount = behaviouralQA.filter((m) => m.role === "user").length;
+  
   if (techCount + behavCount === 0) {
     return NextResponse.json(
       {
@@ -142,20 +166,18 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!apiKey) {
-    return NextResponse.json({
-      ok: true,
-      generated: demoGenerated(body),
-      source: "demo-fallback-no-key",
-      meta: { techCount, behavCount, hasDnla: (body.dnla?.length || 0) > 0 },
-    });
+    return NextResponse.json(
+      { ok: false, error: "Fit Score generation service is not configured." },
+      { status: 503 }
+    );
   }
 
-  const dnlaSummary = (body.dnla || [])
+  const dnlaSummary = dnlaItems
     .map((d) => `${d.group} · ${d.competency}: ${d.score.toFixed(1)} / 7 (benchmark ${d.benchmark.toFixed(1)})`)
     .join("\n");
 
-  const skillList = (body.resumeSkills || []).join(", ");
-  const projectList = (body.resumeProjects || [])
+  const skillList = resumeSkills.join(", ");
+  const projectList = resumeProjects
     .map((p) => `${p.title} [${p.stack.join(", ")}] · ${p.impact}`)
     .join("\n");
 
@@ -179,15 +201,15 @@ ${projectList || "(not provided)"}
 
 DNLA report:
 ${dnlaSummary || "(not provided)"}
-DNLA strengths: ${(body.dnlaStrengths || []).join("; ") || "(none captured)"}
-DNLA development areas: ${(body.dnlaDevelopmentAreas || []).join("; ") || "(none captured)"}
-DNLA risks: ${(body.dnlaRisks || []).join("; ") || "(none)"}
+DNLA strengths: ${dnlaStrengths.join("; ") || "(none captured)"}
+DNLA development areas: ${dnlaDevelopmentAreas.join("; ") || "(none captured)"}
+DNLA risks: ${dnlaRisks.join("; ") || "(none)"}
 
 Technical Interview transcript:
-${transcriptToText(body.technicalQA)}
+${transcriptToText(technicalQA)}
 
 Behavioural Interview transcript:
-${transcriptToText(body.behaviouralQA)}
+${transcriptToText(behaviouralQA)}
 
 Sub-score rubric (every numeric must be an integer 0-100):
 
@@ -237,46 +259,10 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
 Strictly valid JSON. No prose before or after.`;
 
   try {
-    const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            maxOutputTokens: 8192,
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!upstream.ok) {
-      const err = await upstream.text();
-      console.error("[fit-score] Gemini failed:", upstream.status, err.slice(0, 200));
-      return NextResponse.json({
-        ok: true,
-        generated: demoGenerated(body),
-        source: `demo-fallback-gemini-${upstream.status}`,
-        meta: { techCount, behavCount, hasDnla: (body.dnla?.length || 0) > 0 },
-      });
-    }
-
-    const data = await upstream.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const parsed = extractJson(text);
-    if (!parsed) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "The model didn't return a parseable report.",
-          rawPreview: text.slice(0, 300),
-        },
-        { status: 422 }
-      );
-    }
+    const { parsed, model } = await generateGeminiJson(apiKey, prompt, {
+      maxOutputTokens: 8192,
+      temperature: 0.2,
+    });
 
     const generated = {
       technical_score: clamp(parsed.technical_score),
@@ -321,17 +307,21 @@ Strictly valid JSON. No prose before or after.`;
     return NextResponse.json({
       ok: true,
       generated,
-      source: "gemini-2.5-flash",
-      meta: { techCount, behavCount, hasDnla: (body.dnla?.length || 0) > 0 },
+      source: model,
+      meta: { techCount, behavCount, hasDnla: dnlaItems.length > 0 },
     });
   } catch (e: any) {
+    const status = Number(e?.status) || 500;
     return NextResponse.json(
       {
         ok: false,
-        error: "Something went wrong while generating the report.",
-        detail: e?.message?.slice(0, 200),
+        error:
+          status === 422
+            ? "The evaluation service returned an unreadable report."
+            : "Fit Score generation service is unavailable. Please try again.",
+        detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200),
       },
-      { status: 500 }
+      { status: status === 422 ? 422 : 502 }
     );
   }
 }
