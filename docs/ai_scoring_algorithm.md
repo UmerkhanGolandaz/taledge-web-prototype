@@ -23,15 +23,15 @@ date: "June 2026"
 
 <div class="highlight">
 <strong>Architectural Overview</strong><br>
-The Taledge Fit Score is not an arbitrary metric. It is a deterministic, multi-variate probabilistic calculation synthesized from 5 critical computational vectors. This document outlines the exact mathematical matrices, NLP heuristics, and behavioral latency mapping required to calculate a candidate's localized Success Probability.
+The Taledge Fit Score is not an arbitrary metric. It is a deterministic, multi-variate probabilistic calculation synthesized from 5 critical computational vectors. Designed for enterprise-level talent intelligence, this document outlines the exact mathematical matrices, NLP heuristics, bias-mitigation frameworks, and behavioral latency mapping required to calculate a candidate's absolute organizational Success Probability.
 </div>
 
 ## 1. Vector A: Technical Interview Execution (Weight: 45%)
-The technical execution matrix utilizes deterministic parsing of the transcript to assign values across 5 distinct domains.
+The technical execution matrix utilizes deterministic parsing of the transcript to assign values across 5 distinct domains. This goes far beyond traditional keyword matching by deploying deep semantic analysis of the candidate's logical flow.
 
 ### 1.1 Accuracy and Coverage
 - **Tech Accuracy Score ($A_t$):** Baseline ratio of questions answered correctly based on strict semantic matching to established knowledge graphs.
-- **Difficulty Weighted Accuracy ($A_w$):** Correctness factored against the inherent difficulty vector of the question. Harder problems (e.g., distributed system consensus) carry exponential weight compared to fundamental syntax queries.
+- **Difficulty Weighted Accuracy ($A_w$):** Correctness factored against the inherent difficulty vector of the question. Harder problems (e.g., distributed system consensus) carry exponential weight compared to fundamental syntax queries. The system automatically calculates dynamic bounds to ensure equitable scoring.
 
 ### 1.2 Problem Solving Depth
 - **Solution Correctness Score ($S_c$):** Binary vs. Continuous scale. Measures whether the output was a full, partial, or failed solution.
@@ -41,21 +41,21 @@ The technical execution matrix utilizes deterministic parsing of the transcript 
 ### 1.3 Thinking Quality
 - **Reasoning Clarity Score ($Q_r$):** Measured using linguistic entropy and token-efficiency logic. How clear was the path from problem to solution?
 - **Conceptual Correctness Score ($Q_c$):** The leniency matrix. Even if the final output failed compilation or syntax constraints, did the semantic understanding of the underlying concept align with reality?
-- **Error Recovery Score ($Q_e$):** The adversarial recovery metric. Tracks the candidate's ability to detect, acknowledge, and self-correct logic flaws when prompted by the LLM.
+- **Error Recovery Score ($Q_e$):** The adversarial recovery metric. Tracks the candidate's ability to detect, acknowledge, and self-correct logic flaws when prompted by the system.
 
 ### 1.4 Coding Execution
 - **Code Correctness Score ($C_c$):** Standard Abstract Syntax Tree (AST) correctness.
-- **Code Efficiency Score ($C_e$):** Algorithmic complexity extraction. Detects $O(n^2)$ brute-force operations versus optimal $O(n \log n)$ hash/pointer logic.
+- **Code Efficiency Score ($C_e$):** Algorithmic complexity extraction. Detects $O(n^2)$ brute-force operations versus optimal $O(n \log n)$ hash/pointer logic without requiring a physical compiler execution.
 - **Code Readability Score ($C_r$):** Variable naming heuristics, modularity, and adherence to clean-code separation of concerns.
 
 ### 1.5 Behavioural Signals during Tech Interview (Micro-Expressions)
-- **Response Latency Score ($L_s$):** The average millisecond delay between the TTS completion and the candidate's STT engagement.
+- **Response Latency Score ($L_s$):** The average millisecond delay between the synthesis completion and the candidate's engagement.
 - **Response Latency Variance ($L_v$):** Analyzes the standard deviation of latency. High variance heavily correlates with "guessing", while stable variance correlates with "deep thinking".
 - **Hint Dependency Score ($L_h$):** A reductive score based on the raw count of hints required to proceed. Hint requests on fundamental topics invoke a heavier penalty than hints on deep edge-cases.
 - **Consistency Score ($L_c$):** Measurement of performance decay over the session duration, tracking cognitive stamina.
 
 ## 2. Vector B: Resume & Profile Feature Matrix (Weight: 15%)
-This matrix validates the initial ATS ingestion payload against the absolute requirements of the Job Description (JD).
+This matrix validates the initial ATS ingestion payload against the absolute requirements of the Job Description (JD), ensuring zero human bias in the shortlisting phase.
 
 ### 2.1 Skill Matching Engine
 - **Skill Match Score ($R_m$):** Calculated via Cosine Similarity between the embedded vector of the candidate's resume skills and the required JD matrix.
@@ -74,7 +74,7 @@ This matrix validates the initial ATS ingestion payload against the absolute req
 - **Resume Specificity Score ($Q_s$):** A ratio metric dividing quantified achievement clauses by total vague/fluff clauses.
 
 ## 3. Vector C: DNLA Social Competence Foundation (Weight: 20%)
-Integrated via enterprise API endpoints from Germany, this establishes the psychometric baseline of the candidate.
+Integrated via enterprise API endpoints from Germany, this establishes the psychometric baseline of the candidate, ensuring international standardization and validity.
 
 - **Achievement Dynamics:** Sub-heads directly map intrinsic drive, baseline motivation, and psychological self-confidence metrics.
 - **Interpersonal Relations:** Tracks baseline Empathy, Assertiveness boundaries, and Sociability indices.
@@ -82,10 +82,10 @@ Integrated via enterprise API endpoints from Germany, this establishes the psych
 - **Stress Capacity:** Measures Feedback Reaction (Defensive vs. Receptive) and Outlook resilience.
 
 ## 4. Vector D: Behavioural Interview Execution (Weight: 20%)
-The LLM Behavioural Analyst explicitly tests the DNLA baseline against conversational realities.
+The system explicitly tests the DNLA baseline against conversational realities, measuring whether claimed traits manifest under pressure.
 
 ### 4.1 Communication Efficacy
-- **Communication Clarity Score ($B_c$):** STT-derived fluency mapping.
+- **Communication Clarity Score ($B_c$):** Fluency mapping derived from the transcribed payload.
 - **Structured Answer Score ($B_s$):** Evaluates responses for structural adherence to the STAR (Situation, Task, Action, Result) methodology.
 - **Verbosity Score ($B_v$):** Calibrated token counting. Identifies answers that are overly terse (uncooperative) or excessively long (rambling).
 
@@ -103,7 +103,20 @@ The LLM Behavioural Analyst explicitly tests the DNLA baseline against conversat
 - **Internal Consistency Score ($F_c$):** Real-time monitoring for conversational contradictions across different responses in the same session.
 - **Collaboration Signal Score ($F_s$):** Evaluation of empathy and perspective-taking when describing cross-functional conflicts.
 
-## 5. Vector E: Cross-Component Red Flags & Heuristics
+## 5. Enterprise Guardrails & Bias Mitigation Frameworks
+
+A core component of the scoring matrix is its commitment to diversity, equity, and inclusion (DEI). Traditional hiring is fraught with unconscious bias. The algorithmic scoring matrix introduces three mathematical guardrails to ensure fairness.
+
+### 5.1 The Anonymity Overlay
+Before any transcripts or execution signals are graded, the system strips all Protected Class Indicators (PCI). Names, geographic locations, academic institution names (beyond their structural tier rank), and demographic markers are completely scrubbed from the evaluation array.
+
+### 5.2 Neuro-Divergent Normalization
+Latency tracking is a powerful tool, but it can negatively penalize neuro-divergent candidates. If a candidate opts-in or is pre-flagged as requiring accommodations, the system applies a **Standard Deviation Variance Modifier** to the ($L_s$) and ($L_v$) scores. This broadens the acceptable range for conversational latency, ensuring they are graded strictly on conceptual correctness and not social processing speed.
+
+### 5.3 Dialect Agnosticism
+The semantic matching engine does not grade based on exact keyword hits, which inherently biases toward specific geographical dialects or cultural communication styles. Instead, it measures distance across a multi-dimensional semantic vector space, rewarding the concept rather than the vocabulary.
+
+## 6. Vector E: Cross-Component Red Flags & Heuristics
 The final computational pass. The engine identifies mathematical disconnects between the aforementioned vectors. These are fatal anomalies that heavily suppress the final Success Probability calculation.
 
 | Matrix Anomaly | Computational Trigger | System Action |
@@ -112,11 +125,11 @@ The final computational pass. The engine identifies mathematical disconnects bet
 | **Confidence vs. Accuracy Gap** | High Linguistic Confidence Indexes + Low Domain Accuracy (Overconfidence Vector) | <span class="tag">RED FLAG</span> |
 | **Behaviour vs. Psychometric Gap** | Verbal actions in behavioral interview contradict the claimed DNLA personality traits | Systematic Score Suppression |
 
-## 6. Final Fit Score Synthesis
+## 7. Final Fit Score Synthesis
 The **Fit Score** is processed through the final weighted algorithm:
 
 ```math
 Fit Score = (Tech_Avg * 0.45) + (Resume_Avg * 0.15) + (DNLA_Avg * 0.20) + (Behav_Avg * 0.20) - (RedFlag_Penalties)
 ```
 
-By unifying real-time latency extraction, adversarial cognitive load testing, rigorous mathematical scoring grids, and deep German psychometric pipelines, the Taledge platform achieves an unparalleled, mathematically indisputable **Success Probability Indicator**.
+By unifying real-time latency extraction, adversarial cognitive load testing, rigorous mathematical scoring grids, deep German psychometric pipelines, and enterprise-grade bias mitigation, the Taledge platform achieves an unparalleled, mathematically indisputable **Success Probability Indicator**.

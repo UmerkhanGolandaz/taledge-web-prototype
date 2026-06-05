@@ -9,6 +9,7 @@ date: "June 2026"
   h1 { color: #000000; border-bottom: 3px solid #000000; padding-bottom: 15px; font-size: 2.2rem; text-align: center; }
   h2 { color: #000000; border-bottom: 1px solid #000000; padding-bottom: 5px; margin-top: 50px; text-transform: uppercase; letter-spacing: 1px; }
   h3 { color: #000000; margin-top: 30px; font-weight: 700; border-bottom: 1px dashed #cccccc; padding-bottom: 5px;}
+  h4 { color: #000000; margin-top: 20px; font-weight: 600; font-style: italic; }
   pre { background-color: #f8f8f8; color: #000000; padding: 20px; border-radius: 0px; font-size: 0.85rem; overflow-x: auto; border: 1px solid #000000; }
   code { font-family: 'Fira Code', monospace; color: #000000; font-weight: bold; }
   p { color: #000000; font-size: 1.05rem; margin-bottom: 20px; }
@@ -21,7 +22,7 @@ date: "June 2026"
 
 <div class="highlight">
 <strong>Confidential & Proprietary</strong><br>
-This whitepaper details the highly abstracted, technology-agnostic architectural sequences, payload schemas, and asynchronous queuing subsystems that power the Dual-Track Intelligence Engine. The system leverages a proprietary bi-directional streaming protocol, real-time semantic processing, and heuristic proctoring matrices to guarantee zero-hallucination cognitive evaluations.
+This whitepaper details the highly abstracted, technology-agnostic architectural sequences, payload schemas, and asynchronous queuing subsystems that power the Dual-Track Intelligence Engine. Designed for enterprise scalability, the system leverages a proprietary bi-directional streaming protocol, real-time semantic processing, and heuristic proctoring matrices to guarantee zero-hallucination cognitive evaluations.
 </div>
 
 ## 1. System Initialization & Deterministic State Hydration
@@ -29,7 +30,7 @@ This whitepaper details the highly abstracted, technology-agnostic architectural
 Before any network layer establishes a connection, the Central Orchestration Engine hydrates a strict execution context. This prevents semantic hallucination and binds the Generative Engine to a deterministic evaluation path, mathematically eliminating prompt-injection vulnerabilities.
 
 ### 1.1 The Multi-Dimensional Context Payload
-The frontend compiles an aggregated, token-optimized data structure containing parsed historical capability data, Target Role Vector Embeddings, and Academic markers.
+The frontend compiles an aggregated, token-optimized data structure containing parsed historical capability data, Target Role Vector Embeddings, and Academic markers. This payload is strictly validated against a hard-coded schema before ingestion.
 
 ```json
 {
@@ -60,7 +61,7 @@ The frontend compiles an aggregated, token-optimized data structure containing p
 ```
 
 ### 1.2 High-Availability State Management
-During initialization, the payload is committed to an ultra-fast, distributed in-memory datastore (running in a multi-region active-active deployment). As the interaction progresses, the entire conversational turn history is pushed into a highly optimized chronological list structure. This allows the stateless processing workers to instantly rebuild the conversational context upon every new chunk of transcribed speech, reducing lookup latency to sub-2 millisecond bounds.
+During initialization, the payload is committed to an ultra-fast, distributed in-memory datastore (running in a multi-region active-active deployment). As the interaction progresses, the entire conversational turn history is pushed into a highly optimized chronological list structure. This allows the stateless processing workers to instantly rebuild the conversational context upon every new chunk of transcribed speech, reducing lookup latency to sub-2 millisecond bounds. This architecture natively scales to handle tens of thousands of concurrent sessions without locking.
 
 ## 2. Deterministic Persona Routing Matrix
 
@@ -139,19 +140,35 @@ One of the most advanced features of the pipeline is its ability to measure cogn
 - If the latency consistently exceeds established bounds, it indicates deep conceptual searching or potential screen-reading.
 - This metric is compiled into the `Hesitation_Index` and passed directly to the Scoring Algorithm, heavily weighting the candidate's final confidence score downwards.
 
-## 5. Network Protocol & Infrastructure
+## 5. Enterprise-Grade Scale & Latency Mitigation Strategies
 
-### 5.1 Asynchronous Data Transmission
+### 5.1 Load Distribution & Elastic Capacity
+The system's execution pipeline is designed to be purely horizontally scalable. The conversational workers hold no state, allowing the routing layer to instantly spin up additional nodes during high-traffic hiring seasons (e.g., mass campus recruitment drives).
+
+### 5.2 Fault Tolerance & Recovery Protocols
+If an upstream generation cluster experiences an outage mid-sentence, the system falls back to a deterministic semantic cache. It smoothly informs the candidate ("Let me take a moment to process that...") while seamlessly establishing a connection to a secondary failover cluster located in a disparate geographic region.
+
+## 6. Network Protocol & Infrastructure
+
+### 6.1 Asynchronous Data Transmission
 The pipeline relies on a secure, persistent socket connection for the primary data transmission layer.
 - Because the audio is transcribed locally on the client using native processing, the system transmits extremely lightweight JSON text payloads rather than heavy, uncompressed audio buffers.
 - This reduces bandwidth requirements by over 95%, allowing candidates on low-bandwidth connections in remote areas to participate flawlessly without packet loss.
 
-### 5.2 Zero-Trust Cryptographic Authentication
+### 6.2 Zero-Trust Cryptographic Authentication
 Every payload sent over the network is verified using a short-lived, cryptographically signed token.
 - Tokens are minted at session initialization and have a strict expiry time matching the maximum duration of the interaction.
 - If a bad actor attempts to intercept the socket traffic and inject a forged payload, the API gateway immediately rejects the unsigned data and terminates the connection.
 
-## 6. Session Termination & High-Throughput Post-Processing
+## 7. Compliance, Privacy, & Data Governance
+
+### 7.1 PII Masking and Ephemeral Processing
+Before the conversational transcript is evaluated by the primary logic matrix, a proprietary masking layer identifies and strips Personally Identifiable Information (PII) such as names, addresses, and protected demographic markers. This ensures that the evaluation is completely blind and bias-free.
+
+### 7.2 Data Residency & Encryption
+All communication streams are secured using Transport Layer Security (TLS 1.3). Data at rest is encrypted via AES-256 standards, ensuring strict compliance with global enterprise security regulations.
+
+## 8. Session Termination & High-Throughput Post-Processing
 
 Upon termination (either via natural duration limit exhaustion, time expiry, or a security breach), the `Orchestration Controller` compiles the entire transcript, the latency metadata, and the proctoring logs into a finalized `Assessment Ledger`.
 
