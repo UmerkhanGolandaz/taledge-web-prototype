@@ -462,7 +462,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Column: context and optional camera */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
+        <div className="lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-6">
           {/* Proctoring Window */}
           <div className="bg-white/40 backdrop-blur-2xl rounded-3xl p-2 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/60 overflow-hidden relative group">
             <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
@@ -479,24 +479,24 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 autoPlay 
                 playsInline 
                 muted 
-                className="w-full aspect-[4/3] object-cover bg-slate-900/90"
+                className="w-full h-32 md:h-48 lg:h-auto lg:aspect-[4/3] object-cover bg-slate-900/90"
               />
             </div>
             {!webcamEnabled && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-slate-950/80 backdrop-blur-sm p-4 text-center rounded-2xl m-2 border border-white/5">
-                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mb-1">
-                  <Camera className="w-5 h-5 text-white/50" />
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1.5 md:gap-3 bg-slate-950/80 backdrop-blur-sm p-3 md:p-4 text-center rounded-2xl m-2 border border-white/5">
+                <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-white/10 flex items-center justify-center mb-0.5 md:mb-1">
+                  <Camera className="w-4 h-4 md:w-5 md:h-5 text-white/50" />
                 </div>
-                <div className="text-sm font-semibold text-white">Camera not enabled</div>
+                <div className="text-xs md:text-sm font-semibold text-white">Camera not enabled</div>
                 <button
                   type="button"
                   onClick={enableWebcam}
-                  className="rounded-xl bg-indigo-500 hover:bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white transition-colors shadow-[0_0_15px_rgba(99,102,241,0.4)]"
+                  className="rounded-xl bg-indigo-500 hover:bg-indigo-600 px-4 py-2 md:px-5 md:py-2.5 text-[10px] md:text-xs font-bold text-white transition-colors shadow-[0_0_15px_rgba(99,102,241,0.4)]"
                 >
                   Enable camera
                 </button>
                 {cameraError && (
-                  <div className="max-w-xs text-[11px] font-medium text-white/70">{cameraError}</div>
+                  <div className="max-w-xs text-[9px] md:text-[11px] font-medium text-white/70">{cameraError}</div>
                 )}
               </div>
             )}
@@ -538,7 +538,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         </div>
 
         {/* Right Column: Chat Interface */}
-        <div className="lg:col-span-8 flex flex-col bg-white/60 backdrop-blur-3xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/80 overflow-hidden relative">
+        <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/60 backdrop-blur-3xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/80 overflow-hidden relative">
           
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
