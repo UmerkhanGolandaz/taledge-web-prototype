@@ -670,19 +670,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     }
   }, [messages, id, mode]);
 
-  // When the FINAL (behavioural) interview concludes, auto-open the Fit Score
-  // report so generation starts without depending on a manual button click.
-  // The transcript is already persisted by the effect above. The technical
-  // stage still hands off to the behavioural interview via its on-screen button
-  // (the two-stage flow is intentionally kept). The button below also remains
-  // as a fallback if the candidate navigates manually.
+  // When the AI interview concludes, auto-open the Fit Score report so
+  // generation starts without depending on a manual button click. The
+  // transcript is already persisted by the effect above; the report page reads
+  // it and auto-generates. The on-screen button remains as a fallback.
   useEffect(() => {
-    if (!done || isTech) return;
+    if (!done) return;
     const t = setTimeout(() => {
       router.push(`/student/${id}/fit-score`);
     }, 3500);
     return () => clearTimeout(t);
-  }, [done, isTech, router, id]);
+  }, [done, router, id]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -933,12 +931,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     } catch(e) {}
   };
 
-  // FLOW (pilot): DNLA (psychometrics, first) -> technical -> behavioural -> Fit Score.
-  //  technical   -> behavioural interview
-  //  behavioural -> Fit Score report
-  const nextStep = isTech
-    ? { href: `/student/${id}/interview/behavioural`, label: "Continue to behavioural interview" }
-    : { href: `/student/${id}/fit-score`, label: "View Results & Report" };
+  // FLOW: DNLA (psychometrics, first) -> AI interview -> Fit Score report.
+  // The AI interview is the single conversational stage; after it concludes we
+  // go straight to the Fit Score report (the behavioural/psychometric signal
+  // comes from DNLA, which runs BEFORE the interview - not a second interview).
+  const nextStep = { href: `/student/${id}/fit-score`, label: "View Results & Report" };
 
   const goToNextStep = () => router.push(nextStep.href);
 
@@ -1516,9 +1513,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
                   <h3 className="text-lg font-bold text-emerald-800 mb-2">Interview Completed</h3>
                   <p className="text-ink-500 text-sm mb-4">
-                    {isTech
-                      ? "Your technical responses have been analyzed. Next, complete the behavioural interview."
-                      : "Your responses have been analyzed. Generating your Fit Score report…"}
+                    Your responses have been analyzed. Generating your Fit Score report…
                   </p>
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
                     {nextStep.label} <ArrowRight className="w-4 h-4" />
