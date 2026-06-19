@@ -860,14 +860,34 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     try {
       if (videoRef.current && webcamEnabledRef.current) {
         const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = videoRef.current.videoWidth || 640;
-        tempCanvas.height = videoRef.current.videoHeight || 480;
+        // Downscale to max 640px wide: a face check needs no more, and a full
+        // 720p/1080p frame makes the JPEG encode far heavier.
+        const vw = videoRef.current.videoWidth || 640;
+        const vh = videoRef.current.videoHeight || 480;
+        const scale = Math.min(1, 640 / vw);
+        tempCanvas.width = Math.round(vw * scale);
+        tempCanvas.height = Math.round(vh * scale);
         const ctx = tempCanvas.getContext("2d");
         if (ctx) {
-          ctx.drawImage(videoRef.current, 0, 0);
-          const base64Image = tempCanvas.toDataURL("image/jpeg", 0.8);
+          ctx.drawImage(videoRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
+          // Encode asynchronously via toBlob (off the click's synchronous path)
+          // instead of the blocking toDataURL — toDataURL on a full frame blocked
+          // the main thread ~200ms and showed up as a poor INP on this button.
+          const base64Image: string = await new Promise<string>((resolve, reject) => {
+            tempCanvas.toBlob(
+              (blob) => {
+                if (!blob) return reject(new Error("Could not capture image"));
+                const fr = new FileReader();
+                fr.onerror = () => reject(new Error("Could not read captured image"));
+                fr.onload = () => resolve(String(fr.result));
+                fr.readAsDataURL(blob);
+              },
+              "image/jpeg",
+              0.8
+            );
+          });
           setCapturedImage(base64Image);
-          
+
           const vRes = await authedFetch("/api/interview/verify-face", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
