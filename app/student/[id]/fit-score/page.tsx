@@ -288,6 +288,11 @@ export default function FitScorePage() {
   }, [id]);
 
   const profile = readWorkspaceProfile();
+  // Prefer the candidate's real onboarding profile name over the seeded demo
+  // student record - everyone browses under the same demo id (candidate-001),
+  // so s.name would otherwise label every report with the seeded persona.
+  const candidateName: string = (profile.fullName && String(profile.fullName).trim()) || s.name;
+  const candidateFirst = candidateName.split(" ")[0];
 
   return (
     <PageShell>
@@ -300,7 +305,7 @@ export default function FitScorePage() {
         <motion.div variants={itemVariants} className="mb-10">
           <PageHeader
             eyebrow="Fit Score & Success Probability"
-            title={`Structured feedback report for ${s.name.split(" ")[0]}`}
+            title={`Structured feedback report for ${candidateFirst}`}
             description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
             actions={
               <ButtonLink href={`/student/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
@@ -332,7 +337,7 @@ export default function FitScorePage() {
               </Heading>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
                 We could not find a captured assessment for
-                {" "}{s.name.split(" ")[0]}. Complete the assessment first - DNLA, then
+                {" "}{candidateFirst}. Complete the assessment first - DNLA, then
                 the AI technical and behavioural interviews - to generate a
                 personalized Fit Score report grounded in your responses.
               </p>
