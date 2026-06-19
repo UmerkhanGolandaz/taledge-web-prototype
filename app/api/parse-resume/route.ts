@@ -8,7 +8,9 @@ import { isProd } from "@/lib/flags";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8MB
+// Vercel serverless functions reject request bodies larger than 4.5 MB at the
+// platform layer (HTML 413, before our handler runs). Stay safely under it.
+const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4MB
 
 type Parsed = {
   is_resume?: boolean;
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Resume file is larger than 8 MB.",
+        error: "Resume file is larger than 4 MB.",
         filename,
         sizeKb,
       },
@@ -90,23 +92,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Read the upload and verify it is actually a PDF by magic bytes - never
-  // trust the client-supplied content-type or filename extension.
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  if (!hasPdfMagicBytes(bytes)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Please upload a valid PDF resume.",
-        filename,
-        sizeKb,
-      },
-      { status: 400 }
-    );
-  }
-
   try {
+    // Read the upload and verify it is actually a PDF by magic bytes - never
+    // trust the client-supplied content-type or filename extension. Reading and
+    // base64-encoding a multi-MB buffer can throw/OOM, so it MUST stay inside
+    // this try - an uncaught error here becomes a platform HTML 500, which the
+    // client cannot parse and shows as "Resume parsing failed on the server".
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    if (!hasPdfMagicBytes(bytes)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Please upload a valid PDF resume.",
+          filename,
+          sizeKb,
+        },
+        { status: 400 }
+      );
+    }
+
     // Send the PDF DIRECTLY to Gemini as inline data (Google's API parses PDFs
     // natively). This avoids a local PDF text-extraction library — unpdf/pdf.js
     // needs browser globals (DOMMatrix etc.) and crashed the function on Vercel
@@ -152,6 +157,10 @@ The PDF document is attached. Return strictly valid JSON. No prose before or aft
     const { parsed, model } = await generateGeminiJson<Parsed>(apiKey, prompt, {
       maxOutputTokens: 1500,
       temperature: 0.1,
+      // Disable 2.5 "thinking" - on a multi-page PDF it can consume the entire
+      // output-token budget reasoning, leaving empty text and an unparseable
+      // JSON failure. We only need the extracted fields, not chain-of-thought.
+      thinkingBudget: 0,
       // Use the default flash model (supports PDF inlineData; flash-lite does not).
       parts: [{ inlineData: { mimeType: "application/pdf", data: base64Pdf } }],
     });

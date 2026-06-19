@@ -106,10 +106,10 @@ export default function Onboarding() {
       setResumeError("Please upload a PDF file.");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 4 * 1024 * 1024) {
       setResumeFile({ name: file.name, sizeKb: Math.round(file.size / 1024) });
       setResumeStatus("error");
-      setResumeError("File is larger than 10 MB.");
+      setResumeError("File is larger than 4 MB.");
       return;
     }
     setResumeFile({ name: file.name, sizeKb: Math.round(file.size / 1024) });
