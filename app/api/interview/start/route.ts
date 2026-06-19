@@ -48,7 +48,7 @@ Generate a simple, welcoming opening question. Greet them by name (Hello ${nameT
   }
 
   const prompt = mode === "technical"
-    ? `You are a strict but professional technical interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
+    ? `You are a strict but professional interviewer for the ${role} role (this role may be in ANY field — engineering, design, product, sales, marketing, finance, operations, HR, etc. — do not assume it is technical). The candidate is applying for the ${role} position. Their name is ${nameToUse}.
 Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position, or what their general placement goals are. Do NOT ask any specific technical questions or anything about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`
     : `You are a strict but professional behavioural interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
 Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position. Do NOT ask a complex behavioural question or ask about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
