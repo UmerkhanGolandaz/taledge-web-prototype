@@ -77,6 +77,12 @@ export default function Onboarding() {
   const [isJdUpload, setIsJdUpload] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Job Description upload (Goal step): set the target role + skills from a JD PDF.
+  const jdInputRef = useRef<HTMLInputElement>(null);
+  const [jdStatus, setJdStatus] = useState<"idle" | "parsing" | "done" | "error">("idle");
+  const [jdError, setJdError] = useState<string>("");
+  const [jdName, setJdName] = useState<string>("");
+
   // Search input & Dropdown visibility states
   const [roleSearch, setRoleSearch] = useState("");
   const [examSearch, setExamSearch] = useState("");
@@ -212,6 +218,68 @@ export default function Onboarding() {
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) void handleFile(file);
+  }
+
+  // Upload a Job Description PDF in the Goal step and set the target role +
+  // skills from it. Reuses the parse-resume endpoint (it already classifies and
+  // extracts JDs via is_jd / target_role).
+  async function handleJdUpload(file: File) {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setJdStatus("error");
+      setJdError("Please upload a PDF job description.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setJdStatus("error");
+      setJdError("File is larger than 4 MB.");
+      return;
+    }
+    setJdName(file.name);
+    setJdStatus("parsing");
+    setJdError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await authedFetch("/api/parse-resume", { method: "POST", body: fd });
+      const raw = await r.text();
+      let data: any;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        setJdStatus("error");
+        setJdError(r.status >= 500 ? "JD parsing failed on the server. Please try again." : "Unexpected response from the server.");
+        return;
+      }
+      if (!r.ok || !data.ok) {
+        setJdStatus("error");
+        setJdError(data?.error || "We couldn't read this job description. Please try a different file.");
+        return;
+      }
+      const p = data.parsed || {};
+      const role = String(p.target_role || "").trim();
+      if (!role && !(Array.isArray(p.skills) && p.skills.length)) {
+        setJdStatus("error");
+        setJdError("This file doesn't look like a job description.");
+        return;
+      }
+      if (role) setSelectedRole(role);
+      setIsJdUpload(true);
+      setParsedExtras({
+        skills: p.skills || [],
+        projects: p.projects || [],
+        summary: p.summary || "",
+        target_role: role,
+      });
+      setJdStatus("done");
+    } catch (e: any) {
+      setJdStatus("error");
+      setJdError(e?.message || "Network error · please check your connection and retry.");
+    }
+  }
+
+  function onJdChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void handleJdUpload(file);
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -735,6 +803,42 @@ export default function Onboarding() {
                       ));
                     })()}
                   </div>
+
+                  {track === "placement" && (
+                    <div className="mb-6">
+                      <input
+                        ref={jdInputRef}
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={onJdChange}
+                        className="hidden"
+                        aria-hidden="true"
+                      />
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl2 border border-dashed border-brand-300/70 bg-brand-50/40">
+                        <div className="flex-1 text-center sm:text-left">
+                          <p className="text-sm font-bold text-ink-800">Have a specific job description?</p>
+                          <p className="text-xs text-ink-500">Upload the JD (PDF) — we'll set your target role from it and tailor the interview &amp; Fit Score to that exact role.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => jdInputRef.current?.click()}
+                          disabled={jdStatus === "parsing"}
+                        >
+                          {jdStatus === "parsing" ? "Reading JD…" : jdStatus === "done" ? "Replace JD" : "Upload Job Description"}
+                        </Button>
+                      </div>
+                      {jdStatus === "done" && (
+                        <p className="mt-2 text-xs font-medium text-emerald-600">
+                          JD parsed{jdName ? ` · ${jdName}` : ""} → target set to &ldquo;{selectedRole}&rdquo;. Skills captured for scoring.
+                        </p>
+                      )}
+                      {jdStatus === "error" && (
+                        <p className="mt-2 text-xs font-medium text-rose-600">{jdError}</p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="relative mb-10">
                     <label htmlFor="role-exam-combobox" className="block text-sm font-bold text-ink-700 mb-2">
