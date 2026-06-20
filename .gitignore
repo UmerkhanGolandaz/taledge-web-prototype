@@ -25,3 +25,8 @@ node_modules/
 *.log
 
 .vercel
+
+# Firebase service account key (local only - never commit)
+serviceAccount.json
+# Generated interview evaluation PDFs (contain candidate data)
+/reports/
