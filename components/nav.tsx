@@ -183,16 +183,6 @@ export function Nav() {
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event("taledge:command-open"))}
-            aria-label="Open command menu"
-            className="hidden items-center gap-2 rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-500 transition-colors hover:border-brand-300 hover:text-ink-900 lg:inline-flex"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-            <span>Search</span>
-            <kbd className="rounded bg-ink-100 px-1 py-0.5 text-[10px] font-bold text-ink-500">⌘K</kbd>
-          </button>
           {user ? (
             <div className="relative" ref={menuRef}>
               <button
