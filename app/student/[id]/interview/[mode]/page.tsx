@@ -1033,6 +1033,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (episodeMonitor) clearInterval(episodeMonitor);
       clearInterval(timer);
       if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+      try { window.speechSynthesis?.cancel(); } catch (e) {}
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
       audioStream?.getTracks().forEach(t => t.stop());
       if (noiseContext) {
@@ -1102,6 +1103,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       try { audioSourceRef.current.stop(); } catch(e) {}
       audioSourceRef.current = null;
     }
+    // Stop the browser fallback voice too.
+    try { window.speechSynthesis?.cancel(); } catch (e) {}
     // Close audio context
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
@@ -1155,12 +1158,45 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   const stripMarkdown = (text: string) => text.replace(/\*/g, "");
 
-  const playAudioAndListen = async (base64Data: string) => {
-    if (!base64Data) {
+  // Browser fallback voice. Used when the server returns no TTS audio — e.g. in
+  // production where the GEMINI key/project may not have the preview TTS model
+  // enabled (text questions still work, but audioBase64 comes back empty). This
+  // keeps the AI interviewer audible everywhere with no API/key dependency.
+  const speakWithBrowserTTS = (text: string) => {
+    try {
+      const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+      if (!synth || !text) {
+        startListening();
+        return;
+      }
+      synth.cancel();
+      const utter = new SpeechSynthesisUtterance(stripMarkdown(text));
+      utter.lang = "en-US";
+      utter.rate = 1;
+      utter.pitch = 1;
+      setAiSpeaking(true);
+      const finish = () => {
+        setAiSpeaking(false);
+        setAiVolume(0);
+        startListening();
+      };
+      utter.onend = finish;
+      utter.onerror = finish;
+      synth.speak(utter);
+    } catch {
       startListening();
+    }
+  };
+
+  const playAudioAndListen = async (base64Data: string, fallbackText?: string) => {
+    if (!base64Data) {
+      // No server audio → speak the question with the browser voice instead of
+      // sitting silent, then start listening for the answer.
+      if (fallbackText) speakWithBrowserTTS(fallbackText);
+      else startListening();
       return;
     }
-    
+
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -1219,7 +1255,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       source.start();
     } catch (e) {
       console.error("Audio playback error:", e);
-      startListening();
+      // Decode/playback failed → still give the candidate a spoken question.
+      if (fallbackText) speakWithBrowserTTS(fallbackText);
+      else startListening();
     }
   };
 
@@ -1262,7 +1300,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       sessionIdRef.current = preloadedSession.sessionId;
       setMessages([{ role: "ai", text: stripMarkdown(preloadedSession.firstQuestion) }]);
       setIsProcessing(false);
-      playAudioAndListen(preloadedSession.audioBase64);
+      playAudioAndListen(preloadedSession.audioBase64, preloadedSession.firstQuestion);
       return;
     }
 
@@ -1299,7 +1337,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         sessionIdRef.current = data.sessionId;
         setMessages([{ role: "ai", text: stripMarkdown(data.firstQuestion) }]);
         setIsProcessing(false);
-        playAudioAndListen(data.audioBase64);
+        playAudioAndListen(data.audioBase64, data.firstQuestion);
       } else {
         finishConnect();
         setIsProcessing(false);
@@ -1523,14 +1561,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             : "Thank you for completing this assessment. Your responses have been recorded and analyzed. Click below to view your detailed results.";
           setMessages(prev => [...prev, { role: "ai", text: finalMsg }]);
           setIsProcessing(false);
-          if (data.audioBase64) {
-            playAudioAndListen(data.audioBase64);
-          }
+          playAudioAndListen(data.audioBase64, finalMsg);
           return;
         }
         setMessages(prev => [...prev, { role: "ai", text: stripMarkdown(data.nextQuestion) }]);
         setIsProcessing(false);
-        playAudioAndListen(data.audioBase64);
+        playAudioAndListen(data.audioBase64, data.nextQuestion);
       } else {
         setIsProcessing(false);
         restoreDraft();
