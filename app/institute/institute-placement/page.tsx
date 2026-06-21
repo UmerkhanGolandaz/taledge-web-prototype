@@ -295,7 +295,7 @@ export default function InstitutePlacementDashboard() {
             title="Cohort fit distribution"
             description={`${total} candidates split into a 20 / 60 / 20 readiness curve by overall fit.`}
           >
-            <Card variant="frosted" className="rounded-xl3">
+            <Card variant="default" className="rounded-xl2">
               <CardBody>
                 <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-8 items-center">
                   <div className="rounded-xl2 border border-ink-200/60 bg-white/50 p-4">
@@ -346,7 +346,7 @@ export default function InstitutePlacementDashboard() {
               </>
             }
           >
-            <Card variant="frosted">
+            <Card variant="default">
               <CardBody>
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
                   <div>
@@ -416,7 +416,7 @@ export default function InstitutePlacementDashboard() {
               </>
             }
           >
-            <Card variant="frosted">
+            <Card variant="default">
               {/* Filters */}
               <div className="px-5 sm:px-6 pb-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -600,7 +600,7 @@ export default function InstitutePlacementDashboard() {
             title="Campus drives"
             description={`${organisations.length} organisations planning visits this season.`}
           >
-            <Card variant="frosted">
+            <Card variant="default">
               <CardBody>
                 {organisations.length === 0 ? (
                   <EmptyState
@@ -719,7 +719,7 @@ function ShareDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-title"
-        className="relative w-full max-w-md rounded-xl3 border border-ink-200/70 bg-white shadow-panel"
+        className="relative w-full max-w-md rounded-xl2 border border-ink-200/70 bg-white shadow-panel"
       >
         <div className="flex items-start justify-between p-6 pb-3">
           <div>

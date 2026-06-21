@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   Loader2,
   LayoutDashboard,
@@ -12,11 +13,14 @@ import {
   GraduationCap,
   Rocket,
   ArrowRight,
+  Check,
+  CircleDot,
+  Circle,
 } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/components/AuthProvider";
 import { db } from "@/lib/firebase";
-import { PageShell, Card, Heading, Badge, Eyebrow } from "@/components/ui";
+import { PageShell, Card, Heading, Badge, Avatar, CountUp, Tooltip } from "@/components/ui";
 import { roleDef, workspacePath, type Role } from "@/lib/roles";
 
 type Tile = { title: string; desc: string; href: string; icon: React.ReactNode };
@@ -53,11 +57,18 @@ function tilesFor(role: Role): Tile[] {
   ];
 }
 
+type Stage = { key: string; label: string; href: string; done: boolean };
+
+const EASE = [0.16, 1, 0.3, 1] as const;
+
 export default function DashboardPage() {
   const { user, loading } = useAuth();
   const [role, setRole] = useState<Role>("candidate");
   const [name, setName] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "anon">("loading");
+  const [today, setToday] = useState("");
+  // Real, client-present progress (localStorage) — never fabricated.
+  const [progress, setProgress] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (loading) return;
@@ -92,12 +103,74 @@ export default function DashboardPage() {
     };
   }, [loading, user]);
 
+  // Derive real assessment progress (client only → no SSR mismatch).
+  useEffect(() => {
+    if (state !== "ready") return;
+    try {
+      setToday(new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+    } catch {
+      /* date is decorative */
+    }
+    if (role !== "candidate") return;
+    const id = roleDef(role).demoId;
+    const has = (k: string) => {
+      try {
+        return !!localStorage.getItem(k);
+      } catch {
+        return false;
+      }
+    };
+    let profileDone = false;
+    try {
+      const raw = localStorage.getItem("taledge:workspace-profile");
+      const p = raw ? JSON.parse(raw) : null;
+      profileDone = !!(p && (p.resumeSummary || (p.resumeSkills && p.resumeSkills.length) || p.targetRole));
+    } catch {
+      /* ignore */
+    }
+    setProgress({
+      profile: profileDone,
+      dnla: has(`taledge:dnla:${id}`),
+      technical: has(`taledge:interview:${id}:technical`),
+      behavioural: has(`taledge:interview:${id}:behavioural`),
+      fit: has(`taledge:fit-score:${id}`),
+    });
+  }, [state, role]);
+
+  const def = roleDef(role);
+  const ws = workspacePath(role);
+
+  const stages: Stage[] = useMemo(() => {
+    if (role !== "candidate") return [];
+    return [
+      { key: "profile", label: "Profile & Résumé", href: "/onboarding", done: !!progress.profile },
+      { key: "dnla", label: "DNLA Psychometrics", href: `${ws}/dnla`, done: !!progress.dnla },
+      { key: "technical", label: "Technical Interview", href: `${ws}/interview/technical`, done: !!progress.technical },
+      { key: "behavioural", label: "Behavioural Interview", href: `${ws}/interview/behavioural`, done: !!progress.behavioural },
+      { key: "fit", label: "Fit Score", href: `${ws}/fit-score`, done: !!progress.fit },
+    ];
+  }, [role, ws, progress]);
+
+  const completedCount = stages.filter((s) => s.done).length;
+  const nextStage = stages.find((s) => !s.done) || null;
+
+  // ── Loading: enterprise skeleton, not a bare spinner ──────────────────────
   if (loading || state === "loading") {
     return (
       <PageShell width="wide">
-        <div className="flex min-h-[50vh] items-center justify-center text-ink-400">
-          <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading dashboard" />
+        <div className="animate-pulse">
+          <div className="h-3 w-28 rounded bg-ink-100" />
+          <div className="mt-3 h-8 w-64 rounded bg-ink-100" />
+          <div className="mt-8 h-32 rounded-xl2 border border-ink-200/60 bg-ink-50/60" />
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-40 rounded-xl2 border border-ink-200/60 bg-ink-50/60" />
+            ))}
+          </div>
         </div>
+        <span className="sr-only">
+          <Loader2 className="animate-spin" aria-label="Loading dashboard" />
+        </span>
       </PageShell>
     );
   }
@@ -105,9 +178,9 @@ export default function DashboardPage() {
   if (state === "anon") {
     return (
       <PageShell width="narrow">
-        <Card variant="frosted" className="mx-auto max-w-md p-10 text-center">
+        <Card className="mx-auto max-w-md p-10 text-center">
           <Heading as="h1" className="text-2xl">Sign in to continue</Heading>
-          <p className="mt-3 text-sm text-ink-500">Your dashboard is private to your account.</p>
+          <p className="mt-3 text-sm text-ink-500">Your command center is private to your account.</p>
           <div className="mt-6 flex justify-center gap-3">
             <Link href="/login" className="btn-primary">Sign in</Link>
             <Link href="/register" className="btn-ghost">Create account</Link>
@@ -117,40 +190,222 @@ export default function DashboardPage() {
     );
   }
 
-  const def = roleDef(role);
   const tiles = tilesFor(role);
   const first = (name || "there").split(" ")[0];
 
   return (
     <PageShell width="wide">
-      <div className="mb-8">
-        <Eyebrow>Dashboard</Eyebrow>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Heading as="h1" className="text-3xl">Welcome back, {first} 👋</Heading>
-          <Badge tone="brand">{def.label}</Badge>
+      {/* ───────── Command header ───────── */}
+      <motion.header
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: EASE }}
+        className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-200/70 pb-6"
+      >
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-600">Talent Command Center</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Heading as="h1" className="text-2xl sm:text-3xl">Welcome back, {first}</Heading>
+            <Badge tone="brand">{def.label}</Badge>
+          </div>
+          <p className="mt-2 text-sm text-ink-500">{def.blurb}</p>
         </div>
-        <p className="mt-2 text-sm text-ink-500">Pick up where you left off, or jump into any of your tools below.</p>
-      </div>
+        {today && (
+          <div className="text-right">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Today</p>
+            <p className="mt-1 text-sm font-semibold text-ink-700">{today}</p>
+          </div>
+        )}
+      </motion.header>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((t) => (
-          <Link
-            key={t.title}
-            href={t.href}
-            className="group flex flex-col rounded-xl2 border border-ink-200/70 bg-white/80 p-6 shadow-panel backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-brand-200 hover:shadow-panel-hover"
+      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {/* ───────── Main column ───────── */}
+        <div className="space-y-6">
+          {/* Requires your attention */}
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.05 }}
           >
-            <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl2 border border-brand-100 bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-600 group-hover:text-white">
-              {t.icon}
-            </span>
-            <h3 className="text-lg font-bold text-ink-900">{t.title}</h3>
-            <p className="mt-1 flex-1 text-sm leading-relaxed text-ink-500">{t.desc}</p>
-            <span className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-brand-700">
-              Open
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </span>
-          </Link>
-        ))}
+            <SectionLabel>Requires your attention</SectionLabel>
+
+            {role === "candidate" ? (
+              <Card className="mt-3 overflow-hidden">
+                <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {nextStage ? (
+                      <>
+                        <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-400">Next step</p>
+                        <h2 className="mt-1 text-xl font-bold text-ink-900">{nextStage.label}</h2>
+                        <p className="mt-1 text-sm text-ink-500">
+                          {completedCount} of {stages.length} steps complete. Continue your assessment to reach your Fit Score.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[12px] font-semibold uppercase tracking-wide text-emerald-600">Assessment complete</p>
+                        <h2 className="mt-1 text-xl font-bold text-ink-900">Your Fit Score is ready</h2>
+                        <p className="mt-1 text-sm text-ink-500">All {stages.length} steps are done. Review your defensible readiness score.</p>
+                      </>
+                    )}
+                  </div>
+                  <Link
+                    href={nextStage ? nextStage.href : `${ws}/fit-score`}
+                    className="group inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md"
+                  >
+                    {nextStage ? `Continue` : "View Fit Score"}
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </div>
+
+                {/* Real assessment pipeline */}
+                <div className="border-t border-ink-200/60 bg-ink-50/40 px-4 py-4 sm:px-6">
+                  <ol className="grid gap-3 sm:grid-cols-5">
+                    {stages.map((s, i) => {
+                      const isNext = !s.done && (i === 0 || stages[i - 1].done);
+                      return (
+                        <li key={s.key}>
+                          <Link
+                            href={s.href}
+                            className={
+                              "group flex items-start gap-2.5 rounded-lg border p-3 transition-all " +
+                              (s.done
+                                ? "border-emerald-200 bg-emerald-50/60 hover:border-emerald-300"
+                                : isNext
+                                ? "border-brand-300 bg-white hover:border-brand-400 hover:shadow-sm"
+                                : "border-ink-200/70 bg-white hover:border-ink-300")
+                            }
+                          >
+                            <span className="mt-0.5 shrink-0">
+                              {s.done ? (
+                                <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white">
+                                  <Check className="h-3 w-3" />
+                                </span>
+                              ) : isNext ? (
+                                <CircleDot className="h-5 w-5 text-brand-600" />
+                              ) : (
+                                <Circle className="h-5 w-5 text-ink-300" />
+                              )}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-[10px] font-bold uppercase tracking-wide text-ink-400">Step {i + 1}</span>
+                              <span className={"block text-[13px] font-semibold leading-tight " + (s.done ? "text-emerald-800" : isNext ? "text-brand-700" : "text-ink-700")}>
+                                {s.label}
+                              </span>
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              </Card>
+            ) : (
+              <Card className="mt-3 flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-400">Your workspace</p>
+                  <h2 className="mt-1 text-xl font-bold text-ink-900">Open your {def.label.toLowerCase()} workspace</h2>
+                  <p className="mt-1 max-w-md text-sm text-ink-500">{def.blurb}</p>
+                </div>
+                <Link
+                  href={ws}
+                  className="group inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md"
+                >
+                  Open workspace
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </Card>
+            )}
+          </motion.section>
+
+          {/* Your tools */}
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
+          >
+            <SectionLabel>Your workspace</SectionLabel>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {tiles.map((t) => (
+                <Link
+                  key={t.title}
+                  href={t.href}
+                  className="group flex items-start gap-4 rounded-xl2 border border-ink-200/70 bg-white p-5 shadow-panel transition-all hover:border-brand-300 hover:shadow-panel-hover"
+                >
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl2 border border-brand-100 bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-600 group-hover:text-white">
+                    {t.icon}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-[15px] font-bold text-ink-900 group-hover:text-brand-700">{t.title}</span>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-ink-300 transition-all group-hover:translate-x-0.5 group-hover:text-brand-600" />
+                    </span>
+                    <span className="mt-1 block text-[13px] leading-relaxed text-ink-500">{t.desc}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </motion.section>
+        </div>
+
+        {/* ───────── Right rail ───────── */}
+        <motion.aside
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.12 }}
+          className="space-y-6"
+        >
+          <Card className="p-6">
+            <SectionLabel>Account</SectionLabel>
+            <div className="mt-4 flex items-center gap-3">
+              <Avatar name={name} email={user?.email} size="lg" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-ink-900">{name || "Your account"}</p>
+                <p className="truncate text-xs text-ink-500">{user?.email}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-ink-200/60 pt-4">
+              <span className="text-xs font-semibold text-ink-500">Role</span>
+              <Badge tone="brand">{def.label}</Badge>
+            </div>
+            <Link href="/profile" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-900 transition-all hover:border-brand-300 hover:bg-brand-50">
+              <UserCircle className="h-4 w-4" /> Manage profile
+            </Link>
+          </Card>
+
+          {role === "candidate" && (
+            <Card className="p-6">
+              <div className="flex items-center gap-1.5">
+                <SectionLabel>Assessment progress</SectionLabel>
+                <Tooltip label="Profile · DNLA · Technical · Behavioural · Fit Score">
+                  <button type="button" aria-label="What counts as a step" className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-500 hover:bg-ink-200">
+                    i
+                  </button>
+                </Tooltip>
+              </div>
+              <div className="mt-4 flex items-end justify-between">
+                <span className="text-3xl font-extrabold tracking-tight text-ink-900">
+                  <CountUp value={completedCount} />
+                  <span className="text-lg font-bold text-ink-400">/{stages.length}</span>
+                </span>
+                <span className="text-xs font-semibold text-ink-500">steps complete</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-ink-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-600 to-accent-500 transition-all duration-500"
+                  style={{ width: `${(completedCount / stages.length) * 100}%` }}
+                />
+              </div>
+            </Card>
+          )}
+        </motion.aside>
       </div>
     </PageShell>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">{children}</h2>
   );
 }

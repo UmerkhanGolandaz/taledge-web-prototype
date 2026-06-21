@@ -129,6 +129,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [verificationResult, setVerificationResult] = useState<{status: "idle" | "verifying" | "success" | "error", message?: string}>({status: "idle"});
   const [hasStarted, setHasStarted] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  // Specific termination reason (impersonation, etc.) shown on the blocked screen.
+  const [blockReason, setBlockReason] = useState<string>("");
+  // One-shot identity-mismatch warning shown ~2s before termination.
+  const [identityWarning, setIdentityWarning] = useState<string>("");
   const [warningMessage, setWarningMessage] = useState("");
   const [preloadedSession, setPreloadedSession] = useState<any>(null);
   const [aiVolume, setAiVolume] = useState(0);
@@ -138,6 +142,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   });
   const [violationLog, setViolationLog] = useState<string[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // Live lighting estimate for the Face-ID verify step (canvas brightness).
+  const [lightingState, setLightingState] = useState<"good" | "dark" | "bright" | "unknown">("unknown");
   // Surfaces a finite-timeout / failure on the interview-start ("Connecting...")
   // path so the UI does not spin forever. Retry re-runs startInterview().
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -146,8 +152,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [sendError, setSendError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Dedicated <video> for the Face-ID verify dialog. It shares the SAME
+  // MediaStream as the background proctoring feed (a stream can drive multiple
+  // <video> elements), so the candidate sees a real live preview while verifying.
+  const verifyVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  // Enrolled reference frame (set on successful Face-ID verify) + a live mirror
+  // of the detected person count — both read inside long-lived proctoring
+  // closures to run continuous anti-impersonation identity checks.
+  const referenceImageRef = useRef<string | null>(null);
+  const personCountRef = useRef(0);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -499,6 +514,41 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       lastWidth = window.outerWidth;
     };
 
+    // 4c. Copy / cut blocking — each attempt is a proctoring warning (shared
+    // 3-strike pipeline, so repeated copying ends the assessment).
+    const handleCopyAttempt = (e: Event) => {
+      e.preventDefault();
+      issueWarning("Copying interview content is not allowed.");
+    };
+
+    // 4d. Full-screen lock. The assessment runs full-screen; LEAVING it warns
+    // ONCE (and we send the candidate back in), then terminates on the next exit.
+    let fullscreenExits = 0;
+    const inFullscreen = () =>
+      !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+    const handleFullscreenChange = () => {
+      if (!hasStartedRef.current || proctoringRef.current.blocked || doneRef.current) return;
+      if (inFullscreen()) return; // entered / re-entered → ignore
+      fullscreenExits++;
+      const reason = "You exited full-screen mode.";
+      setViolationLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${reason}`]);
+      if (sessionIdRef.current) {
+        authedFetch("/api/interview/proctor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason }),
+        }).catch(() => {});
+      }
+      if (fullscreenExits >= 2) {
+        proctoringRef.current.blocked = true;
+        setBlockReason("You exited full-screen mode again. For exam integrity, this assessment has been terminated.");
+        setBlocked(true);
+      } else {
+        proctoringRef.current.isWarningVisible = true;
+        setWarningMessage("FULL-SCREEN REQUIRED: You left full-screen. Return to full-screen to continue — exiting again will end your assessment.");
+      }
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     // Window blur/focus catches leaving the screen even when the tab stays
     // technically visible (alt-tab to another app, second monitor, devtools).
@@ -506,6 +556,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     window.addEventListener("focus", onScreenBack);
     document.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("dragstart", handleDragStart);
+    document.addEventListener("copy", handleCopyAttempt);
+    document.addEventListener("cut", handleCopyAttempt);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange as EventListener);
     window.addEventListener("resize", handleResize);
 
     // 4b. External display / HDMI detection. A second or extended monitor during
@@ -553,12 +607,174 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     let intrusionFrames = 0;
     let phoneFrames = 0;
     let gazeAwayFrames = 0;
+    let wasAbsent = false;
 
     // Background noise detection context and nodes
     let audioStream: MediaStream | null = null;
     let audioAnalyzer: AnalyserNode | null = null;
     let audioSource: MediaStreamAudioSourceNode | null = null;
     let noiseContext: AudioContext | null = null;
+
+    // ===== IDENTITY CONTINUITY (anti-impersonation) =====
+    // After enrolment (Face-ID verify), keep confirming the SAME person is at
+    // the camera. A sustained mismatch warns at +2s and terminates at +5s
+    // (wall-clock). A ONE-TIME grace: if the enrolled candidate returns while
+    // warned, the test resumes — but only once; any later mismatch ends it.
+    let identityBusy = false;
+    let pardonUsed = false;        // the single resume-grace has been spent
+    let episodeActive = false;     // a mismatch escalation is in progress
+    let episodeStart = 0;          // wall-clock (ms) of first detection
+    let episodeWarned = false;     // the +2s warning has been shown
+    let episodeChecking = false;   // an identity re-check is in flight
+    let lastEpisodeCheckAt = 0;
+    let episodeMonitor: ReturnType<typeof setInterval> | null = null;
+    const IDENTITY_WARN_MSG =
+      "A different person has been detected at the camera. The enrolled candidate must return NOW, or this assessment will be terminated.";
+
+    const captureFrame = (): string | null => {
+      const v = videoRef.current;
+      if (!v || !webcamEnabledRef.current || !v.videoWidth) return null;
+      try {
+        const c = document.createElement("canvas");
+        const scale = Math.min(1, 640 / v.videoWidth);
+        c.width = Math.round(v.videoWidth * scale);
+        c.height = Math.round((v.videoHeight || 480) * scale);
+        const ctx = c.getContext("2d");
+        if (!ctx) return null;
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        return c.toDataURL("image/jpeg", 0.8);
+      } catch {
+        return null;
+      }
+    };
+
+    const runIdentityCheck = async (): Promise<"same" | "different" | "unknown"> => {
+      if (!referenceImageRef.current) return "unknown";
+      const frame = captureFrame();
+      if (!frame) return "unknown";
+      try {
+        const res = await authedFetch("/api/interview/verify-face", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageBase64: frame,
+            referenceBase64: referenceImageRef.current,
+            sessionId: sessionIdRef.current,
+          }),
+        });
+        const data = await res.json();
+        if (data && data.samePerson === false) return "different";
+        return "same";
+      } catch {
+        return "unknown";
+      }
+    };
+
+    const terminateImpersonation = () => {
+      if (proctoringRef.current.blocked) return;
+      proctoringRef.current.blocked = true;
+      setIdentityWarning("");
+      const reason = "A different person was detected at the camera. For exam integrity, this assessment has been terminated.";
+      setBlockReason(reason);
+      setViolationLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Face identity mismatch — a different person was detected`]);
+      if (sessionIdRef.current) {
+        authedFetch("/api/interview/proctor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason: "Face identity mismatch — different person detected" }),
+        }).catch(() => {});
+      }
+      setBlocked(true);
+    };
+
+    const endEpisode = () => {
+      episodeActive = false;
+      if (episodeMonitor) {
+        clearInterval(episodeMonitor);
+        episodeMonitor = null;
+      }
+    };
+
+    // Wall-clock escalation tick (runs every 250ms during a mismatch episode):
+    //   • t ≥ 2s → show ONE warning
+    //   • a re-check says "same" after warning → RESUME (consumes the one-time
+    //     grace) — the enrolled candidate came back
+    //   • t ≥ 5s with a different person still present → terminate
+    const episodeTick = async () => {
+      if (!episodeActive) return;
+      if (proctoringRef.current.blocked) {
+        endEpisode();
+        return;
+      }
+      const elapsed = Date.now() - episodeStart;
+      if (elapsed >= 2000 && !episodeWarned) {
+        episodeWarned = true;
+        setIdentityWarning(IDENTITY_WARN_MSG);
+      }
+      if (episodeChecking) return;
+      const due = Date.now() - lastEpisodeCheckAt >= 1500;
+      const deadline = elapsed >= 5000;
+      if (!due && !deadline) return;
+      episodeChecking = true;
+      lastEpisodeCheckAt = Date.now();
+      const v = await runIdentityCheck();
+      episodeChecking = false;
+      if (!episodeActive) return;
+      if (v === "same") {
+        // Enrolled candidate is back. If we had warned (a real, sustained
+        // mismatch), this spends the single grace; resume the test.
+        if (episodeWarned) pardonUsed = true;
+        setIdentityWarning("");
+        endEpisode();
+        return;
+      }
+      if (deadline) {
+        if (v === "different") {
+          terminateImpersonation();
+        } else {
+          // Unreadable frame at the deadline → fail-open (never falsely end).
+          setIdentityWarning("");
+        }
+        endEpisode();
+      }
+    };
+
+    const onIdentityDifferent = () => {
+      if (proctoringRef.current.blocked || episodeActive) return;
+      // The one-time grace is already spent → no second chance; end it now.
+      if (pardonUsed) {
+        terminateImpersonation();
+        return;
+      }
+      episodeActive = true;
+      episodeStart = Date.now();
+      episodeWarned = false;
+      episodeChecking = false;
+      lastEpisodeCheckAt = Date.now(); // the triggering check just ran
+      episodeMonitor = setInterval(() => { void episodeTick(); }, 250);
+    };
+
+    // Identity probe. While an escalation episode is active it owns the checks,
+    // so this only feeds in NEW detections between episodes.
+    const verifyIdentityNow = async (urgent = false) => {
+      if (
+        identityBusy ||
+        episodeActive ||
+        !hasStartedRef.current ||
+        proctoringRef.current.blocked ||
+        !webcamEnabledRef.current ||
+        !referenceImageRef.current
+      )
+        return;
+      if (!urgent && personCountRef.current < 1) return;
+      identityBusy = true;
+      try {
+        const v = await runIdentityCheck();
+        if (v === "different") onIdentityDifferent();
+      } finally {
+        identityBusy = false;
+      }
+    };
 
     const checkVisionAI = async () => {
       if (!videoRef.current || !webcamEnabledRef.current || proctoringRef.current.blocked || proctoringRef.current.isWarningVisible) return;
@@ -621,7 +837,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           });
 
           const personCount = uniquePersons.length;
-          
+          personCountRef.current = personCount;
+
           // Lower device detection threshold to 0.35 to capture cell phones/laptops/books reliably
           const phoneDetected = predictions.some((p: any) => 
             (p.class === "cell phone" || p.class === "laptop" || p.class === "book") && p.score > 0.35
@@ -677,12 +894,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
           // Debounce missing face detection: trigger warning only if detected in 3 consecutive frames (2.4s)
           if (personCount === 0) {
+            wasAbsent = true;
             missingFrames++;
             if (missingFrames >= 3) {
               issueWarning("You are not visible to the AI! Your face must be clearly visible at all times.");
               missingFrames = 0;
             }
           } else {
+            // A face returned after an absence — the classic seat-swap moment.
+            // Urgently re-confirm it is still the SAME enrolled candidate.
+            if (wasAbsent) {
+              wasAbsent = false;
+              void verifyIdentityNow(true);
+            }
             missingFrames = 0;
           }
 
@@ -725,6 +949,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       }
     };
     const visionInterval = setInterval(checkVisionAI, 800);
+    // Periodic anti-impersonation identity confirmation (in addition to the
+    // urgent re-check fired whenever a face reappears after an absence).
+    const identityInterval = setInterval(() => { void verifyIdentityNow(false); }, 5000);
 
      return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -733,6 +960,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       clearUnfocusTimer();
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("dragstart", handleDragStart);
+      document.removeEventListener("copy", handleCopyAttempt);
+      document.removeEventListener("cut", handleCopyAttempt);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange as EventListener);
       window.removeEventListener("resize", handleResize);
       clearInterval(displayInterval);
       try {
@@ -741,6 +972,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         /* noop */
       }
       clearInterval(visionInterval);
+      clearInterval(identityInterval);
+      if (episodeMonitor) clearInterval(episodeMonitor);
       clearInterval(timer);
       if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -755,6 +988,49 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, []);
+
+  // Robustly (re)bind the live MediaStream to BOTH video elements whenever they
+  // mount or the step changes — and explicitly call play(). Without this, the
+  // background feed (and the verify preview) can stay black: getUserMedia
+  // resolves once, but the <video> for a given step may not be in the DOM yet,
+  // or autoplay may not start without an explicit play() call.
+  useEffect(() => {
+    const stream = mediaStreamRef.current;
+    if (!stream) return;
+    [videoRef.current, verifyVideoRef.current].forEach((v) => {
+      if (v && v.srcObject !== stream) v.srcObject = stream;
+      v?.play?.().catch(() => {});
+    });
+  }, [webcamEnabled, setupStep, hasStarted, capturedImage]);
+
+  // While on the Face-ID verify step, sample camera brightness so we can guide
+  // the candidate ("too dark", "good lighting"). Person/face counts come from
+  // the existing vision loop (proctoringStatus). Cheap, no model needed.
+  useEffect(() => {
+    if (hasStarted || setupStep !== "verify" || blocked) return;
+    const canvas = document.createElement("canvas");
+    const tick = () => {
+      const vid = verifyVideoRef.current || videoRef.current;
+      if (!vid || vid.readyState < 2 || !vid.videoWidth) return;
+      try {
+        canvas.width = 64;
+        canvas.height = 48;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(vid, 0, 0, 64, 48);
+        const { data } = ctx.getImageData(0, 0, 64, 48);
+        let tot = 0;
+        for (let i = 0; i < data.length; i += 4) tot += (data[i] + data[i + 1] + data[i + 2]) / 3;
+        const avg = tot / (data.length / 4);
+        setLightingState(avg < 35 ? "dark" : avg > 235 ? "bright" : "good");
+      } catch {
+        /* brightness sampling is best-effort */
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [hasStarted, setupStep, blocked, webcamEnabled]);
 
   // CRITICAL: When blocked, immediately kill all audio and speech recognition
   useEffect(() => {
@@ -1029,6 +1305,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             });
           } else {
             setVerificationResult({ status: "success" });
+            // Enrol this verified frame as the identity reference. Every later
+            // identity check compares the live camera against THIS person.
+            referenceImageRef.current = base64Image;
             // Record the successful face check on the server session so the
             // voice endpoint can require verification before serving questions.
             if (sessionIdRef.current) {
@@ -1204,6 +1483,51 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     </div>
   );
 
+  // Face-ID guidance row (verify dialog checklist).
+  const VerifyGuide = ({ ok, warn, label }: { ok: boolean; warn?: boolean; label: string }) => (
+    <div className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-semibold ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : warn ? "border-rose-200 bg-rose-50 text-rose-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-white ${ok ? "bg-emerald-500" : warn ? "bg-rose-500" : "bg-amber-500"}`}>
+        {ok ? <Check className="w-2.5 h-2.5" /> : warn ? <X className="w-2.5 h-2.5" /> : <span className="block w-1 h-1 rounded-full bg-white" />}
+      </span>
+      <span className="truncate">{label}</span>
+    </div>
+  );
+
+  // ── Derived live state for the Face-ID verify dialog ──────────────────────
+  const vModelsLoaded = proctoringReady && !!modelRef.current;
+  const vPersonCount = proctoringStatus.personCount;
+  const vLightingOk = lightingState === "good";
+  const vTooMany = vModelsLoaded && vPersonCount > 1;
+  const vNoPerson = vModelsLoaded && vPersonCount === 0;
+  const vFaceOk = vModelsLoaded ? proctoringStatus.faceVisible : webcamEnabled;
+  const vAllGood = webcamEnabled && vLightingOk && (!vModelsLoaded || vPersonCount === 1) && vFaceOk;
+  // Hard-block capture only on clearly-bad, fixable conditions; otherwise let the
+  // server-side Gemini face check be the final gate (so detection lag never traps).
+  const vBlockCapture = !webcamEnabled || lightingState === "dark" || vTooMany;
+  const vPersonLabel = !vModelsLoaded
+    ? "Detecting…"
+    : vPersonCount === 0
+    ? "No person detected"
+    : vPersonCount === 1
+    ? "1 person detected"
+    : `${vPersonCount} people detected`;
+  const vPersonTone: "ok" | "bad" | "neutral" = !vModelsLoaded ? "neutral" : vPersonCount === 1 ? "ok" : "bad";
+  const vLightingLabel =
+    lightingState === "good" ? "Good lighting" : lightingState === "dark" ? "Too dark" : lightingState === "bright" ? "Too bright" : "Checking lighting…";
+  const vCaptureHint = !webcamEnabled
+    ? "Waiting for camera…"
+    : lightingState === "dark"
+    ? "Too dark — add light on your face"
+    : vTooMany
+    ? `Only one person allowed (${vPersonCount} detected)`
+    : lightingState === "bright"
+    ? "Reduce glare / backlight"
+    : vNoPerson
+    ? "Position your face in the frame"
+    : vModelsLoaded && !proctoringStatus.faceVisible
+    ? "Center your face in the oval"
+    : "Capture & Verify";
+
   return (
     <div className="min-h-screen bg-canvas flex flex-col font-sans relative z-0 select-none"
       onCopy={e => e.preventDefault()}
@@ -1226,7 +1550,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           className="fixed inset-0 z-[210] bg-ink-900/70 backdrop-blur-xl flex items-center justify-center p-4 text-center"
         >
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-lg">
-            <Card variant="frosted" className="rounded-xl3 p-8 border-rose-200">
+            <Card variant="default" className="rounded-xl2 p-8 border-rose-200">
               <div aria-hidden className="w-16 h-16 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-5">
                 <Camera className="w-8 h-8 text-rose-600" />
               </div>
@@ -1254,7 +1578,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           className="fixed inset-0 z-[100] bg-ink-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8"
         >
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto w-full max-w-lg">
-            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8 text-center">
+            <Card variant="default" className="rounded-xl2 p-6 md:p-8 text-center">
               <div aria-hidden className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 shadow-panel">
                 <FileText className="h-6 w-6 text-white" />
               </div>
@@ -1284,7 +1608,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           className="fixed inset-0 z-[100] bg-ink-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8"
         >
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto w-full max-w-2xl">
-            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8">
+            <Card variant="default" className="rounded-xl2 p-6 md:p-8">
             <div aria-hidden className="w-12 h-12 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl2 flex items-center justify-center shadow-panel mb-4">
               <ShieldAlert className="w-6 h-6 text-white" />
             </div>
@@ -1334,7 +1658,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           className="fixed inset-0 z-[100] bg-ink-900/80 backdrop-blur-xl overflow-y-auto flex items-center justify-center p-4 md:p-8"
         >
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
-            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8 flex flex-col items-center">
+            <Card variant="default" className="rounded-xl2 p-6 md:p-8 flex flex-col items-center">
             <div aria-hidden className="w-16 h-16 bg-gradient-to-br from-brand-600 to-accent-500 rounded-full flex items-center justify-center shadow-panel mb-4">
               <Camera className="w-8 h-8 text-white" />
             </div>
@@ -1366,9 +1690,46 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 )}
               </div>
             ) : (
-              <div className="w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 mb-6 relative shadow-inner ring-4 ring-ink-100 flex flex-col items-center justify-center text-ink-200">
-                <Camera aria-hidden className="w-10 h-10 mb-2 opacity-50" />
-                <span className="text-xs font-semibold uppercase tracking-wider">Live feed active in background</span>
+              <div className="w-full mb-5">
+                <div className="relative w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 shadow-inner ring-4 ring-ink-100">
+                  {/* real live preview — shares the proctoring MediaStream */}
+                  <video
+                    ref={verifyVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    aria-label="Live camera preview"
+                    className="w-full h-full object-cover [transform:scaleX(-1)]"
+                  />
+                  {/* face alignment guide */}
+                  <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className={`h-[82%] aspect-[3/4] rounded-[46%] border-[3px] border-dashed transition-colors duration-500 ${vAllGood ? "border-emerald-400" : "border-white/60"}`} />
+                  </div>
+                  {/* live status chips */}
+                  <div className="absolute top-2.5 left-2.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wide">
+                    <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+                    {webcamEnabled ? "Live" : "Off"}
+                  </div>
+                  <div className={`absolute top-2.5 right-2.5 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 uppercase tracking-wide backdrop-blur ${vPersonTone === "ok" ? "bg-emerald-500/30 text-emerald-50" : vPersonTone === "bad" ? "bg-rose-500/40 text-rose-50" : "bg-white/15 text-white"}`}>
+                    <Users aria-hidden className="w-3 h-3" /> {vPersonLabel}
+                  </div>
+                  {!webcamEnabled && (
+                    <div className="absolute inset-0 grid place-items-center text-ink-200 text-xs font-semibold">
+                      {cameraError ? "Camera unavailable" : "Starting camera…"}
+                    </div>
+                  )}
+                </div>
+
+                {/* live guidance checklist */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <VerifyGuide ok={webcamEnabled} label={webcamEnabled ? "Camera active" : "Camera off"} />
+                  <VerifyGuide ok={vModelsLoaded ? vPersonCount === 1 : webcamEnabled} warn={vTooMany} label={vPersonLabel} />
+                  <VerifyGuide ok={vLightingOk} warn={lightingState === "bright"} label={vLightingLabel} />
+                  <VerifyGuide
+                    ok={vModelsLoaded ? proctoringStatus.faceVisible : webcamEnabled}
+                    label={vModelsLoaded ? (proctoringStatus.faceVisible ? "Face detected" : "Face not detected") : "Face check ready"}
+                  />
+                </div>
               </div>
             )}
 
@@ -1384,8 +1745,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 Identity Verified - Start Interview <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
-              <Button type="button" onClick={handleCaptureAndVerify} disabled={verificationResult.status === "verifying"} size="lg" className="w-full py-3.5">
-                {verificationResult.status === "verifying" ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : "📸 Capture Image"}
+              <Button type="button" onClick={handleCaptureAndVerify} disabled={verificationResult.status === "verifying" || vBlockCapture} size="lg" className="w-full py-3.5">
+                {verificationResult.status === "verifying"
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</>
+                  : vBlockCapture
+                  ? vCaptureHint
+                  : <>📸 Capture &amp; Verify</>}
               </Button>
             )}
             </Card>
@@ -1402,12 +1767,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           className="fixed inset-0 z-[200] bg-ink-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center"
         >
           <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="w-full max-w-lg">
-            <Card variant="frosted" className="rounded-xl3 p-10 border-rose-200">
+            <Card variant="default" className="rounded-xl2 p-10 border-rose-200">
             <div aria-hidden className="w-20 h-20 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-6">
               <ShieldAlert className="w-10 h-10 text-rose-600" />
             </div>
             <Heading as="h2" id="blocked-dialog-title" className="text-3xl text-ink-900 mb-4">Assessment Terminated</Heading>
-            <p className="text-ink-500 mb-4 text-lg" role="alert">Your assessment has been permanently blocked due to {warnings} proctoring violations.</p>
+            <p className="text-ink-500 mb-4 text-lg" role="alert">{blockReason || `Your assessment has been permanently blocked due to ${warnings} proctoring violations.`}</p>
             {violationLog.length > 0 ? (
               <div className="bg-rose-50 border border-rose-100 rounded-xl2 p-4 mb-8 text-left max-h-32 overflow-y-auto">
                 {violationLog.map((v, i) => (
@@ -1442,7 +1807,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             className="fixed inset-0 z-[150] bg-ink-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center"
           >
             <motion.div initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-lg">
-              <Card variant="frosted" className="rounded-xl3 p-10 border-amber-200">
+              <Card variant="default" className="rounded-xl2 p-10 border-amber-200">
               <div aria-hidden className="w-20 h-20 bg-amber-100 rounded-full mx-auto flex items-center justify-center mb-6">
                 <AlertTriangle className="w-10 h-10 text-amber-600" />
               </div>
@@ -1452,6 +1817,36 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               <button type="button" autoFocus onClick={closeWarning} className="px-8 py-4 w-full bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 shadow-panel transition-all">
                 I Understand - Return to Interview
               </button>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== IDENTITY (IMPERSONATION) WARNING ===== */}
+      <AnimatePresence>
+        {identityWarning && !blocked && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="identity-warning-title"
+            className="fixed inset-0 z-[160] bg-ink-900/70 backdrop-blur-xl flex items-center justify-center p-4 text-center"
+          >
+            <motion.div initial={{ scale: 0.85, y: 20 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-lg">
+              <Card variant="default" className="rounded-xl2 p-10 border-rose-200">
+                <div aria-hidden className="w-20 h-20 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-6">
+                  <ShieldAlert className="w-10 h-10 text-rose-600" />
+                </div>
+                <Heading as="h2" id="identity-warning-title" className="text-2xl text-ink-900 mb-4" aria-live="assertive">
+                  Identity Check Failed
+                </Heading>
+                <p className="text-ink-700 mb-3 text-lg font-medium">{identityWarning}</p>
+                <p className="text-rose-600 font-bold text-sm">
+                  Re-verifying now — the assessment will end if the enrolled candidate is not at the camera.
+                </p>
               </Card>
             </motion.div>
           </motion.div>
@@ -1496,7 +1891,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           {/* Left Column: Camera + Proctoring Panel + Profile */}
           <div className="lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
             {/* Camera Feed */}
-            <Card variant="frosted" className="bg-white/50 p-1.5 relative group">
+            <Card variant="default" className="bg-white/50 p-1.5 relative group">
               <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
                 <div className="px-2.5 py-1 bg-black/70 backdrop-blur-xl rounded-lg text-[9px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`} />
@@ -1529,7 +1924,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             {/* Live Proctoring Panel */}
             {hasStarted && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                <Card variant="frosted" className="bg-white/50 p-4">
+                <Card variant="default" className="bg-white/50 p-4">
                 <Eyebrow className="mb-3 flex items-center gap-1.5">
                   <ShieldAlert aria-hidden className="w-3 h-3 text-brand-500" /> Live Security Checks
                 </Eyebrow>
@@ -1548,7 +1943,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             )}
 
             {/* Candidate Profile */}
-            <Card variant="frosted" className="bg-white/50 p-5">
+            <Card variant="default" className="bg-white/50 p-5">
               <Eyebrow className="mb-3 flex items-center gap-1.5">
                 <FileText aria-hidden className="w-3 h-3 text-brand-500" /> Candidate Profile
               </Eyebrow>

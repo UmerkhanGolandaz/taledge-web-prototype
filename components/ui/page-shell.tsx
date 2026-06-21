@@ -32,15 +32,15 @@ export function PageShell({
   grid?: boolean;
 }) {
   return (
-    <div className="relative min-h-screen bg-canvas">
+    <div className="relative min-h-screen bg-canvas print:bg-white">
       {grid && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"
+          className="pointer-events-none absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)] print:hidden"
         />
       )}
       {glow && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden print:hidden">
           <div className="absolute -top-40 left-1/3 h-[28rem] w-[28rem] rounded-full bg-brand-300/20 blur-[120px]" />
           <div className="absolute -top-20 right-1/4 h-[22rem] w-[22rem] rounded-full bg-accent-300/20 blur-[120px]" />
         </div>
@@ -73,15 +73,17 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-8 flex flex-wrap items-end justify-between gap-4", className)}>
-      <div>
-        {eyebrow && <div className="section-title mb-2">{eyebrow}</div>}
-        <h1 className="h-headline text-3xl sm:text-4xl lg:text-5xl">{title}</h1>
+    <div className={cn("mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-ink-200/70 pb-5", className)}>
+      <div className="min-w-0">
+        {eyebrow && (
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-600">{eyebrow}</p>
+        )}
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink-900 sm:text-3xl">{title}</h1>
         {description && (
-          <p className="mt-3 max-w-2xl text-sm sm:text-base text-ink-500">{description}</p>
+          <p className="mt-2 max-w-2xl text-sm text-ink-500">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-3">{actions}</div>}
     </div>
   );
 }

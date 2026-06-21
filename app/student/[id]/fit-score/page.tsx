@@ -15,6 +15,7 @@ import {
   Stat,
   Heading,
   Eyebrow,
+  Breadcrumbs,
 } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { containerVariants, itemVariants } from "@/lib/motion";
@@ -312,14 +313,27 @@ export default function FitScorePage() {
       >
         {/* Header */}
         <motion.div variants={itemVariants} className="mb-10">
+          <Breadcrumbs
+            items={[
+              { label: "Dashboard", href: "/dashboard" },
+              { label: "Workspace", href: `${flowBase}/${s.id}` },
+              { label: "Fit Score" },
+            ]}
+          />
           <PageHeader
             eyebrow="Fit Score & Success Probability"
             title={`Structured feedback report for ${candidateFirst}`}
             description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
             actions={
-              <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
-                <ArrowLeft /> Back to Dashboard
-              </ButtonLink>
+              <div className="flex items-center gap-2 print:hidden">
+                <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} aria-label="Print or save report as PDF">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
+                  Print / PDF
+                </Button>
+                <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+                  <ArrowLeft /> Back to Dashboard
+                </ButtonLink>
+              </div>
             }
           />
 
@@ -339,7 +353,7 @@ export default function FitScorePage() {
           /* Empty state: no captured transcript yet - show a clear prompt
              instead of a blank/Pending score grid. */
           <motion.div variants={itemVariants}>
-            <Card variant="frosted" className="rounded-xl3 overflow-hidden p-8 text-center sm:p-12">
+            <Card variant="default" className="rounded-xl2 overflow-hidden p-8 text-center sm:p-12">
               <Eyebrow className="text-brand-500">No assessment evidence yet</Eyebrow>
               <Heading as="h2" className="mt-3">
                 Complete an interview to unlock your Fit Score
@@ -369,7 +383,7 @@ export default function FitScorePage() {
           <div className="space-y-10">
             {/* HEADLINE NUMBERS */}
             <motion.div variants={itemVariants}>
-              <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8">
+              <Card variant="default" className="rounded-xl2 overflow-hidden p-6 sm:p-8">
                 <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-12">
                   <div className="flex justify-center lg:col-span-3">
                     <ScoreRing
@@ -459,7 +473,7 @@ export default function FitScorePage() {
             {/* Narrative summary */}
             {report.narrative && (
               <motion.div variants={itemVariants}>
-                <Card variant="frosted" className="rounded-xl3 p-6 sm:p-8">
+                <Card variant="default" className="rounded-xl2 p-6 sm:p-8">
                   <Eyebrow>Executive summary</Eyebrow>
                   <p className="mt-3 text-base leading-relaxed text-ink-800 font-medium">
                     {report.narrative}
@@ -494,7 +508,7 @@ export default function FitScorePage() {
             {/* JD VS RESUME MATCH ANALYSIS */}
             {status === "generated" && (
               <motion.div variants={itemVariants}>
-                <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8 animate-fade-in">
+                <Card variant="default" className="rounded-xl2 overflow-hidden p-6 sm:p-8 animate-fade-in">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200/50 pb-4 mb-5">
                     <div>
                       <Eyebrow className="text-brand-500">Comparative Fit Analysis</Eyebrow>
@@ -564,7 +578,7 @@ export default function FitScorePage() {
                   <ArrowRight />
                 </ButtonLink>
               </div>
-              <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden p-6">
+              <Card variant="default" className="w-full rounded-xl2 overflow-hidden p-6">
                 <Eyebrow>Awaiting DNLA import</Eyebrow>
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
                   DNLA competencies will appear only after verified external import.
@@ -598,7 +612,7 @@ export default function FitScorePage() {
                   </p>
                 </div>
               </div>
-              <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden overflow-x-auto p-0">
+              <Card variant="default" className="w-full rounded-xl2 overflow-hidden overflow-x-auto p-0">
                 <div className="min-w-[640px]">
                   <div className="grid grid-cols-12 border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
                     <div className="col-span-4">Check</div>
@@ -630,7 +644,7 @@ export default function FitScorePage() {
 
             {/* PUBLISH OR REATTEMPT */}
             <motion.section variants={itemVariants} className="mt-12">
-              <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8">
+              <Card variant="default" className="rounded-xl2 overflow-hidden p-6 sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-6">
                   <div className="max-w-xl">
                     <Eyebrow>Decision point · Per PRD §4.3</Eyebrow>
@@ -683,7 +697,7 @@ export default function FitScorePage() {
 
             {/* NEXT STEP */}
             <motion.section variants={itemVariants} className="mt-12">
-              <div className="rounded-xl3 border border-brand-200/50 bg-gradient-to-br from-brand-500/10 to-accent-500/5 backdrop-blur-2xl p-6 sm:p-8 shadow-panel">
+              <div className="rounded-xl2 border border-brand-200 bg-brand-50/70 p-6 sm:p-8 shadow-panel">
                 <div className="flex flex-wrap items-center justify-between gap-6">
                   <div>
                     <Eyebrow className="text-brand-500">Assessment Complete</Eyebrow>
@@ -759,7 +773,7 @@ function RubricSection({
           : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
       }`}>
         {safeGroups.length === 0 && (
-          <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden p-6 text-sm leading-relaxed text-ink-600 md:col-span-2 xl:col-span-3">
+          <Card variant="default" className="w-full rounded-xl2 overflow-hidden p-6 text-sm leading-relaxed text-ink-600 md:col-span-2 xl:col-span-3">
             No generated sub-scores yet. Complete the interviews and generate the
             report to populate this component.
           </Card>
@@ -769,7 +783,7 @@ function RubricSection({
             key={g.group}
             whileHover={{ y: -4 }}
           >
-            <Card variant="frosted" hover className="w-full rounded-xl3 overflow-hidden p-6">
+            <Card variant="default" hover className="w-full rounded-xl2 overflow-hidden p-6">
               <Eyebrow>{g.group}</Eyebrow>
               <div className="mt-4 space-y-3">
                 {(Array.isArray(g.rows) ? g.rows : []).map(([label, value]) => {
@@ -823,7 +837,7 @@ function HeadlineStat({
     <motion.div
       variants={itemVariants}
       whileHover={{ y: -3, boxShadow: "0 10px 30px rgba(0,0,0,0.04)" }}
-      className={`rounded-xl3 border ${accent} backdrop-blur-md p-5 flex flex-col justify-between min-h-[144px] transition-all duration-300 shadow-panel`}
+      className={`rounded-xl2 border ${accent} backdrop-blur-md p-5 flex flex-col justify-between min-h-[144px] transition-all duration-300 shadow-panel`}
     >
       <Stat
         label={label}
@@ -862,7 +876,7 @@ function GenStatusBanner({
 }) {
   if (status === "idle" || status === "checking") {
     return (
-      <Card variant="frosted" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 px-5 py-4 text-xs">
+      <Card variant="default" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 px-5 py-4 text-xs">
         <div className="flex items-center gap-2.5 text-ink-600">
           <span className="inline-block h-2 w-2 rounded-full bg-ink-400" />
           <span>No Fit Score report has been generated yet. Complete an interview, then return here to generate your personalized report with TalEdge AI.</span>
@@ -970,7 +984,7 @@ function ReportSkeleton() {
   return (
     <div className="space-y-8">
       {/* Skeleton Headline */}
-      <div className="bg-white/40 border border-ink-200/60 rounded-xl3 p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8 animate-pulse shadow-panel">
+      <div className="bg-white/40 border border-ink-200/60 rounded-xl2 p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8 animate-pulse shadow-panel">
         <div className="w-44 h-44 rounded-full bg-ink-200/50 flex items-center justify-center shrink-0">
           <LoaderIcon className="w-8 h-8 text-brand-500 animate-spin" />
         </div>
@@ -986,7 +1000,7 @@ function ReportSkeleton() {
       </div>
 
       {/* Skeleton Narrative */}
-      <div className="bg-ink-200/20 border border-ink-200/20 rounded-xl3 p-6 h-36 animate-pulse flex flex-col justify-between shadow-panel">
+      <div className="bg-ink-200/20 border border-ink-200/20 rounded-xl2 p-6 h-36 animate-pulse flex flex-col justify-between shadow-panel">
         <div className="h-3 bg-ink-300/50 rounded w-1/6" />
         <div className="space-y-2">
           <div className="h-3 bg-ink-300/40 rounded w-full" />
@@ -1000,7 +1014,7 @@ function ReportSkeleton() {
         <div className="h-8 bg-ink-200/40 rounded-xl w-1/4" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-ink-200/20 border border-ink-200/20 rounded-xl3 p-6 h-48 flex flex-col justify-between">
+            <div key={i} className="bg-ink-200/20 border border-ink-200/20 rounded-xl2 p-6 h-48 flex flex-col justify-between">
               <div className="h-3 bg-ink-300/50 rounded w-1/3" />
               <div className="space-y-3">
                 {[...Array(3)].map((_, j) => (

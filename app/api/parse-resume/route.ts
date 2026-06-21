@@ -37,6 +37,116 @@ function hasPdfMagicBytes(bytes: Uint8Array): boolean {
   );
 }
 
+/**
+ * Graceful fallback when the Gemini service isn't configured (demo / no key):
+ * extract text locally with unpdf and best-effort pull the candidate's name and
+ * email so onboarding can still auto-fill — never a hard 503 dead-end.
+ *  - `degraded: true` + `ok: true` → we found something to pre-fill.
+ *  - `manual: true` + `ok: false` (HTTP 200) → couldn't read it; the client
+ *    shows a calm "enter your details below" state instead of an error.
+ */
+async function localParseFallback(bytes: Uint8Array, filename: string, sizeKb: number) {
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const pdf = await getDocumentProxy(bytes);
+    const { text } = await extractText(pdf, { mergePages: true });
+    const flat = String(text || "").replace(/\r/g, "");
+
+    const emailMatch = flat.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    const email = emailMatch ? emailMatch[0] : "";
+
+    // Heuristic name: the leading run of alphabetic tokens. A résumé almost
+    // always opens with the candidate's name, before any email or number — and
+    // this works whether or not the PDF extractor preserved line breaks.
+    let full_name = "";
+    const nameWords: string[] = [];
+    for (const tok of flat.split(/\s+/)) {
+      if (!tok) continue;
+      if (/[@\d]/.test(tok)) break;
+      if (/^[A-Za-z][A-Za-z.'-]*$/.test(tok) && !/^(resume|curriculum|vitae|profile|cv)$/i.test(tok)) {
+        nameWords.push(tok);
+        if (nameWords.length >= 3) break;
+      } else {
+        break;
+      }
+    }
+    if (nameWords.length >= 2) full_name = nameWords.slice(0, 3).join(" ");
+
+    // Skills: capture a "Skills" section and split its comma / bullet list.
+    let skills: string[] = [];
+    const skillsMatch = flat.match(/skills?\s*[:\-—]?\s*([A-Za-z0-9 ,.+#/&()'\-|•·]{3,240})/i);
+    if (skillsMatch) {
+      skills = skillsMatch[1]
+        .split(/[,|•·]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 2 && s.length <= 32 && /[A-Za-z]/.test(s))
+        .slice(0, 10);
+    }
+
+    // Institution: a capitalized phrase ending in a known education keyword.
+    let institution = "";
+    const instMatch = flat.match(
+      /([A-Z][A-Za-z.&]+(?:\s+[A-Za-z.&]+){0,5}\s+(?:Institute of Technology|University|College|Institute|Polytechnic))/
+    );
+    if (instMatch) institution = instMatch[1].trim().slice(0, 80);
+
+    // Year / cohort: a degree token, optionally paired with a year signal.
+    let year_cohort = "";
+    const degree = flat.match(
+      /\b(B\.?Tech|B\.?E\.?|M\.?Tech|MBA|B\.?Sc|M\.?Sc|B\.?Com|BCA|MCA|Ph\.?D|B\.?A\.?|M\.?A\.?)\b[^,\n]{0,40}/i
+    );
+    const yr = flat.match(/\b(Final Year|First Year|Second Year|Third Year|20\d{2})\b/i);
+    if (degree || yr) {
+      year_cohort = [yr ? yr[1] : "", degree ? degree[0].trim() : ""].filter(Boolean).join(" · ").slice(0, 60);
+    }
+
+    if (!email && !full_name && !institution && skills.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          manual: true,
+          error: "We couldn't auto-read this PDF. Please enter your details below — it only takes a moment.",
+          filename,
+          sizeKb,
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      degraded: true,
+      parsed: {
+        is_resume: true,
+        is_jd: false,
+        full_name,
+        email,
+        institution,
+        year_cohort,
+        target_role: "",
+        summary: "",
+        skills,
+        projects: [],
+      },
+      source: "local-extraction",
+      filename,
+      sizeKb,
+    });
+  } catch {
+    // unpdf failed (rare): still don't block — drop to manual entry.
+    return NextResponse.json(
+      {
+        ok: false,
+        manual: true,
+        error: "AI resume parsing isn't enabled here. Please enter your details below to continue.",
+        filename,
+        sizeKb,
+      },
+      { status: 200 }
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
@@ -80,18 +190,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Resume parsing service is not configured.",
-        filename,
-        sizeKb,
-      },
-      { status: 503 }
-    );
-  }
-
   try {
     // Read the upload and verify it is actually a PDF by magic bytes - never
     // trust the client-supplied content-type or filename extension. Reading and
@@ -110,6 +208,12 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // No Gemini key (demo) → degrade gracefully to local extraction instead of
+    // failing the upload. Onboarding stays usable with manual entry.
+    if (!apiKey) {
+      return await localParseFallback(bytes, filename, sizeKb);
     }
 
     // Send the PDF DIRECTLY to Gemini as inline data (Google's API parses PDFs

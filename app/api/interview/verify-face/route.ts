@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
 
     const imageBase64 = (body as { imageBase64?: unknown })?.imageBase64;
     const sessionId = (body as { sessionId?: unknown })?.sessionId;
+    const referenceBase64 = (body as { referenceBase64?: unknown })?.referenceBase64;
     if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
       return NextResponse.json({ ok: false, error: "No image provided" }, { status: 400 });
     }
@@ -80,6 +81,60 @@ export async function POST(req: NextRequest) {
     };
     if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
       return NextResponse.json({ ok: false, error: "Image too large" }, { status: 400 });
+    }
+
+    // ── IDENTITY CONTINUITY ─────────────────────────────────────────────────
+    // When a reference frame is supplied, compare the CURRENT live frame against
+    // the enrolled candidate. Used during the interview to catch a person swap.
+    // Fail-OPEN (samePerson:true) on ANY uncertainty/outage so a legitimate
+    // candidate is never wrongly terminated — only a CONFIDENT mismatch flags.
+    if (typeof referenceBase64 === "string" && referenceBase64.length > 0) {
+      if (referenceBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+        return NextResponse.json({ ok: true, verified: true, samePerson: true, reason: "reference_too_large" });
+      }
+      const idKey = getGeminiApiKey();
+      if (!idKey) {
+        return NextResponse.json({ ok: true, verified: true, samePerson: true, reason: "unavailable" });
+      }
+      const refData = referenceBase64.replace(/^data:image\/\w+;base64,/, "");
+      const curData = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const idPrompt = `You are a strict identity-verification AI for a proctored exam.
+You are given a REFERENCE image of the enrolled candidate and a CURRENT live webcam frame.
+Decide whether the CURRENT frame shows the SAME person as the REFERENCE.
+Report NOT the same person ONLY if the primary face in CURRENT is CLEARLY a DIFFERENT individual (i.e. the candidate was replaced by someone else).
+If the CURRENT image is dark, blurry, turned away, partially visible, or shows no face, respond same_person: true — never falsely accuse.
+Respond with ONLY a single minified JSON object and nothing else:
+{"same_person": <true|false>, "reason": "<short reason>"}
+The "same_person" field MUST be a strict JSON boolean (true or false).`;
+      try {
+        const idResult = await generateGeminiContent(idKey, idPrompt, {
+          parts: [
+            { text: "REFERENCE (enrolled candidate):" },
+            { inlineData: { mimeType: "image/jpeg", data: refData } },
+            { text: "CURRENT (live webcam frame):" },
+            { inlineData: { mimeType: "image/jpeg", data: curData } },
+          ],
+          temperature: 0.1,
+          thinkingBudget: 0,
+          maxOutputTokens: 256,
+          responseMimeType: "application/json",
+        });
+        const idRaw = (idResult.text || "").trim();
+        let different = false;
+        let idReason = "";
+        try {
+          const cleaned = idRaw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+          const parsed = JSON.parse(cleaned);
+          different = parsed?.same_person === false; // only an explicit false flags
+          if (typeof parsed?.reason === "string") idReason = parsed.reason;
+        } catch {
+          different = false; // unparseable → fail open
+        }
+        return NextResponse.json({ ok: true, verified: !different, samePerson: !different, reason: idReason });
+      } catch (e: any) {
+        logger.error("verify-face: identity compare error", { message: String(e?.message || e) });
+        return NextResponse.json({ ok: true, verified: true, samePerson: true, reason: "unavailable" });
+      }
     }
 
     // 4. FAIL CLOSED on missing key: never bypass proctoring with verified:true.
