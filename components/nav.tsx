@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "./logo";
+import { Avatar } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { auth } from "@/lib/firebase";
@@ -97,23 +98,17 @@ export function Nav() {
     router.push("/login");
   };
 
-  const initial = (user?.displayName || user?.email || "U").trim().charAt(0).toUpperCase();
-
   // Hide the global nav on immersive/landing/auth flows and on the in-app
   // workspace pages that ship their own DashboardShell header.
+  // Persistent app header EVERYWHERE except the public/auth flows and the
+  // immersive proctored interview (any path containing an /interview segment —
+  // the exam must stay full-screen with no chrome).
   const hideNav =
     pathname === "/" ||
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register" ||
-    pathname === "/profile" ||
-    pathname?.startsWith("/student/") ||
-    pathname === "/recruiter/recruiter-001" ||
-    pathname === "/coach/coach-001" ||
-    pathname === "/institute/institute-placement" ||
-    pathname === "/institute/exam" ||
-    pathname?.startsWith("/exam/") ||
-    pathname?.startsWith("/interview");
+    !!pathname?.includes("/interview");
   if (hideNav) return null;
 
   // Link resolution:
@@ -124,18 +119,31 @@ export function Nav() {
   const loggedInNeutral: NavLink[] = [{ href: "/dashboard", label: "Home", icon: LayoutDashboard }];
   const links: NavLink[] =
     role && ROLE_NAV[role] ? ROLE_NAV[role] : user ? loggedInNeutral : demoLinks;
-  const topSegment = (p?: string | null) => p?.split("/").filter(Boolean)[0] ?? "";
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === "/dashboard" : topSegment(pathname) === topSegment(href);
+  // Highlight exactly ONE link: the exact route match, otherwise the single
+  // longest link whose path is a prefix of the current route. This stops
+  // sibling links that share a top segment (e.g. all /student/... links) from
+  // all lighting up at once.
+  const activeHref = (() => {
+    if (!pathname) return null;
+    let best: string | null = null;
+    for (const l of links) {
+      if (pathname === l.href) return l.href;
+      if (l.href !== "/dashboard" && pathname.startsWith(l.href + "/")) {
+        if (!best || l.href.length > best.length) best = l.href;
+      }
+    }
+    return best;
+  })();
+  const isActive = (href: string) => href === activeHref;
 
   return (
-    <div className="sticky top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
+    <div className="sticky top-0 z-50 px-3 pt-3 sm:px-5 print:hidden">
       <header
         className={cn(
-          "relative mx-auto flex max-w-6xl items-center justify-between gap-4 rounded-full border px-3 py-2 transition-all duration-300",
+          "relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 rounded-full border px-3 backdrop-blur-xl transition-all duration-300 sm:px-4",
           scrolled
-            ? "border-ink-200/70 bg-white/85 shadow-panel backdrop-blur-xl"
-            : "border-white/60 bg-white/60 shadow-[0_4px_24px_-12px_rgba(16,24,40,0.18)] backdrop-blur-xl"
+            ? "border-ink-200/80 bg-white/90 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.22)]"
+            : "border-ink-200/60 bg-white/85 shadow-[0_10px_34px_-18px_rgba(16,24,40,0.15)]"
         )}
       >
         <Link
@@ -160,10 +168,10 @@ export function Nav() {
                 href={l.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold transition-colors",
+                  "flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-semibold transition-colors",
                   active
-                    ? "bg-brand-600 text-white shadow-sm"
-                    : "text-ink-600 hover:bg-ink-900/5 hover:text-ink-900"
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-ink-600 hover:bg-ink-100 hover:text-ink-900"
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden />
@@ -175,6 +183,16 @@ export function Nav() {
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("taledge:command-open"))}
+            aria-label="Open command menu"
+            className="hidden items-center gap-2 rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-500 transition-colors hover:border-brand-300 hover:text-ink-900 lg:inline-flex"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <span>Search</span>
+            <kbd className="rounded bg-ink-100 px-1 py-0.5 text-[10px] font-bold text-ink-500">⌘K</kbd>
+          </button>
           {user ? (
             <div className="relative" ref={menuRef}>
               <button
@@ -182,11 +200,9 @@ export function Nav() {
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
-                className="flex items-center gap-2 rounded-full border border-ink-200/70 bg-white/80 py-1 pl-1 pr-2.5 text-sm font-bold text-ink-800 transition hover:border-brand-300 hover:shadow-sm"
+                className="flex items-center gap-2 rounded-md border border-ink-200/70 bg-white py-1 pl-1 pr-2.5 text-sm font-bold text-ink-800 transition hover:border-brand-300 hover:bg-ink-50"
               >
-                <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-600 text-xs font-black text-white">
-                  {initial}
-                </span>
+                <Avatar name={user.displayName} email={user.email} size="xs" />
                 <span className="hidden max-w-[120px] truncate sm:inline">{user.displayName || user.email}</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden className={menuOpen ? "rotate-180 transition-transform" : "transition-transform"}>
                   <path d="M6 9l6 6 6-6" />
@@ -223,13 +239,13 @@ export function Nav() {
             <>
               <Link
                 href="/login"
-                className="hidden rounded-full px-4 py-2 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-900/5 hover:text-ink-900 sm:inline-flex"
+                className="hidden rounded-md px-4 py-2 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-100 hover:text-ink-900 sm:inline-flex"
               >
                 Sign in
               </Link>
               <Link
                 href="/register"
-                className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-brand-700 hover:shadow-md sm:px-5"
+                className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-brand-700 hover:shadow-md sm:px-5"
               >
                 Get started
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
@@ -244,7 +260,7 @@ export function Nav() {
             aria-label={open ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={open}
             aria-controls="mobile-nav-menu"
-            className="grid h-9 w-9 place-items-center rounded-full border border-ink-200/70 bg-white text-ink-900 transition-colors hover:bg-ink-50 md:hidden"
+            className="grid h-9 w-9 place-items-center rounded-md border border-ink-200/70 bg-white text-ink-900 transition-colors hover:bg-ink-50 md:hidden"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               {open ? <path d="M6 6l12 12M18 6L6 18" /> : <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>}
@@ -255,7 +271,7 @@ export function Nav() {
 
       {/* Mobile dropdown (floating card) */}
       {open && (
-        <div id="mobile-nav-menu" className="mx-auto mt-2 max-w-6xl rounded-3xl border border-ink-200/70 bg-white/95 p-2 shadow-panel backdrop-blur-xl md:hidden">
+        <div id="mobile-nav-menu" className="mx-auto mt-2 max-w-6xl rounded-2xl border border-ink-200/70 bg-white/95 p-2 shadow-lg backdrop-blur-xl md:hidden">
           {links.map((l) => {
             const active = isActive(l.href);
             const Icon = l.icon;

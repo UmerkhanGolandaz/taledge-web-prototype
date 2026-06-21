@@ -64,8 +64,8 @@ export default function DashboardClient({ student }: { student: Student }) {
       {/* Assessment CTA - keeps the pilot flow reachable from the hub */}
       <motion.div variants={itemVariants} className="mb-12">
           <Card
-            variant="frosted"
-            className="rounded-xl3 shadow-panel p-6 sm:p-8 bg-gradient-to-br from-brand-500/10 to-accent-500/5 border-brand-200/50"
+            variant="default"
+            className="rounded-xl2 shadow-panel p-6 sm:p-8 bg-brand-50/70 border-brand-200"
           >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-4">
@@ -116,7 +116,7 @@ export default function DashboardClient({ student }: { student: Student }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Quadrant Column */}
           <motion.div variants={itemVariants} className="lg:col-span-2">
-            <Card variant="frosted" className="relative h-full rounded-xl3 shadow-panel p-6 sm:p-8">
+            <Card variant="default" className="relative h-full rounded-xl2 shadow-panel p-6 sm:p-8">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <Heading as="h2" className="text-xl flex items-center gap-2">
@@ -137,7 +137,7 @@ export default function DashboardClient({ student }: { student: Student }) {
               <div
                 role="img"
                 aria-label={`Strength vs. development quadrant: your technical score is ${techScore} and behavioural score is ${behavScore}, plotted against the batch average.`}
-                className="relative w-full aspect-square max-h-[400px] border border-white/40 shadow-[inset_0_0_30px_rgba(0,0,0,0.02)] rounded-xl3 bg-white/40 overflow-hidden backdrop-blur-md group hover:bg-white/50 transition-colors duration-500"
+                className="relative w-full aspect-square max-h-[400px] border border-white/40 shadow-[inset_0_0_30px_rgba(0,0,0,0.02)] rounded-xl2 bg-white/40 overflow-hidden backdrop-blur-md group hover:bg-white/50 transition-colors duration-500"
               >
                 {/* Axes */}
                 <div className="absolute top-1/2 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-ink-300/80 to-transparent" />
@@ -206,7 +206,7 @@ export default function DashboardClient({ student }: { student: Student }) {
 
           {/* Actionable Gaps & Recommendations */}
           <motion.div variants={itemVariants} className="flex flex-col gap-6">
-            <Card variant="frosted" className="rounded-xl3 shadow-panel p-6 relative overflow-hidden">
+            <Card variant="default" className="rounded-xl2 shadow-panel p-6 relative overflow-hidden">
               <Eyebrow className="mb-4 flex items-center gap-2">
                 <Target size={16} aria-hidden="true" /> Batch-Level Gaps
               </Eyebrow>
@@ -228,7 +228,7 @@ export default function DashboardClient({ student }: { student: Student }) {
               </ul>
             </Card>
 
-            <Card variant="frosted" className="rounded-xl3 shadow-panel p-6 flex-1 bg-gradient-to-br from-brand-500/10 to-accent-500/5 border-brand-200/50">
+            <Card variant="default" className="rounded-xl2 shadow-panel p-6 flex-1 bg-brand-50/70 border-brand-200">
               <Eyebrow className="mb-4 flex items-center gap-2 text-brand-600">
                 <Zap size={16} aria-hidden="true" /> Learning Recommendations
               </Eyebrow>
@@ -262,7 +262,7 @@ export default function DashboardClient({ student }: { student: Student }) {
 
         {/* Behavioural competencies (DNLA) */}
         <motion.div variants={itemVariants} className="mt-12">
-          <Card variant="frosted" className="rounded-xl3 shadow-panel p-6 sm:p-8">
+          <Card variant="default" className="rounded-xl2 shadow-panel p-6 sm:p-8">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <Heading as="h2" className="flex items-center gap-2 text-xl">
@@ -355,7 +355,7 @@ export default function DashboardClient({ student }: { student: Student }) {
           </div>
 
           {coaches.length === 0 ? (
-            <Card variant="frosted" className="rounded-xl3 shadow-panel p-6">
+            <Card variant="default" className="rounded-xl2 shadow-panel p-6">
               <p className="text-sm text-ink-500">No coaches are available right now. Check back soon.</p>
             </Card>
           ) : (
@@ -365,7 +365,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                   key={i}
                   whileHover={{ y: -5 }}
                 >
-                  <Card variant="frosted" className="rounded-xl3 shadow-panel p-6">
+                  <Card variant="default" className="rounded-xl2 shadow-panel p-6">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center text-white font-bold text-lg shadow-inner">
                         {coach.name.split(' ').map(n => n[0]).join('')}

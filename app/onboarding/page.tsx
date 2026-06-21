@@ -59,7 +59,7 @@ type ParsedResume = {
   projects?: { title: string; stack: string[]; impact: string }[];
 };
 
-type ResumeStatus = "idle" | "uploading" | "parsing" | "parsed" | "error";
+type ResumeStatus = "idle" | "uploading" | "parsing" | "parsed" | "manual" | "error";
 
 export default function Onboarding() {
   const [step, setStep] = useState(0);
@@ -71,6 +71,9 @@ export default function Onboarding() {
   const [resumeFile, setResumeFile] = useState<{ name: string; sizeKb: number } | null>(null);
   const [resumeSource, setResumeSource] = useState<string>("");
   const [resumeError, setResumeError] = useState<string>("");
+  // True when the server could only partially auto-fill (e.g. local extraction
+  // without the AI service) — we ask the user to review the prefilled fields.
+  const [resumeDegraded, setResumeDegraded] = useState(false);
   const [parseMs, setParseMs] = useState<number>(0);
 
   // JD and Validation state
@@ -121,6 +124,7 @@ export default function Onboarding() {
     setResumeFile({ name: file.name, sizeKb: Math.round(file.size / 1024) });
     setResumeStatus("parsing");
     setResumeError("");
+    setResumeDegraded(false);
     setParsedExtras(null);
     const t0 = performance.now();
     try {
@@ -146,11 +150,19 @@ export default function Onboarding() {
       setParseMs(elapsed);
 
       if (!r.ok || !data.ok) {
+        // Service unconfigured / unreadable PDF → calm manual-entry state, not
+        // a hard failure. The form below stays fully usable.
+        if (data?.manual) {
+          setResumeStatus("manual");
+          setResumeError(data?.error || "Enter your details below to continue.");
+          return;
+        }
         setResumeStatus("error");
         setResumeError(data?.error || "We couldn't parse this PDF. Please try a different resume file.");
         return;
       }
 
+      setResumeDegraded(!!data.degraded);
       setResumeSource(data.source || "");
       const p: ParsedResume = data.parsed || {};
       const isJd = !!p.is_jd;
@@ -252,7 +264,11 @@ export default function Onboarding() {
       }
       if (!r.ok || !data.ok) {
         setJdStatus("error");
-        setJdError(data?.error || "We couldn't read this job description. Please try a different file.");
+        setJdError(
+          data?.manual
+            ? "Auto-reading the JD needs the AI service. Pick your target role from the list above instead."
+            : data?.error || "We couldn't read this job description. Please try a different file."
+        );
         return;
       }
       const p = data.parsed || {};
@@ -530,21 +546,61 @@ export default function Onboarding() {
                     )}
 
                     {resumeStatus === "parsed" && (
-                      <div className="flex items-center gap-4 p-6 rounded-xl2 border border-emerald-200 bg-emerald-50 relative">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center">
-                          <CheckIcon className="w-6 h-6 text-emerald-600" aria-hidden="true" />
+                      <div className={cn(
+                        "flex items-center gap-4 p-6 rounded-xl2 border relative",
+                        resumeDegraded ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"
+                      )}>
+                        <div className={cn(
+                          "w-12 h-12 rounded-xl border flex items-center justify-center",
+                          resumeDegraded ? "bg-amber-100 border-amber-200" : "bg-emerald-100 border-emerald-200"
+                        )}>
+                          {resumeDegraded
+                            ? <DocIcon className="w-6 h-6 text-amber-600" aria-hidden="true" />
+                            : <CheckIcon className="w-6 h-6 text-emerald-600" aria-hidden="true" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="truncate text-ink-900 font-bold">{resumeFile?.name}</div>
-                          <div className="text-sm font-medium text-emerald-600/80">Parsed in {(parseMs / 1000).toFixed(1)}s</div>
+                          <div className={cn("text-sm font-medium", resumeDegraded ? "text-amber-700/90" : "text-emerald-600/80")}>
+                            {resumeDegraded
+                              ? "Partial auto-fill · please review your details below"
+                              : `Parsed in ${(parseMs / 1000).toFixed(1)}s`}
+                          </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="text-sm font-bold text-emerald-600 hover:text-emerald-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 rounded-md"
+                          className={cn(
+                            "text-sm font-bold underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 rounded-md",
+                            resumeDegraded ? "text-amber-700 hover:text-amber-800" : "text-emerald-600 hover:text-emerald-700"
+                          )}
                         >
                           Replace
                         </button>
+                      </div>
+                    )}
+
+                    {resumeStatus === "manual" && (
+                      <div className="flex items-center gap-4 p-6 rounded-xl2 border border-brand-200 bg-brand-50">
+                        <div className="w-12 h-12 rounded-xl bg-brand-100 border border-brand-200 flex items-center justify-center">
+                          <DocIcon className="w-6 h-6 text-brand-600" aria-hidden="true" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-ink-900 font-bold">{resumeFile?.name || "Manual entry"}</div>
+                          <div className="text-sm font-medium text-brand-700/90">{resumeError || "Enter your details below to continue."}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          className="rounded-full"
+                          onClick={() => {
+                            setResumeStatus("idle");
+                            setResumeFile(null);
+                            setResumeError("");
+                          }}
+                        >
+                          Try another
+                        </Button>
                       </div>
                     )}
 
@@ -599,7 +655,7 @@ export default function Onboarding() {
                         setFullName(val);
                         if (errors.fullName) setErrors(prev => ({ ...prev, fullName: "" }));
                       }}
-                      autoFilled={resumeStatus === "parsed" && !isJdUpload}
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload && !resumeDegraded}
                       error={errors.fullName}
                     />
                     <Field
@@ -609,7 +665,7 @@ export default function Onboarding() {
                         setEmail(val);
                         if (errors.email) setErrors(prev => ({ ...prev, email: "" }));
                       }}
-                      autoFilled={resumeStatus === "parsed" && !isJdUpload}
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload && !resumeDegraded}
                       error={errors.email}
                     />
                     <Field
@@ -619,7 +675,7 @@ export default function Onboarding() {
                         setInstitution(val);
                         if (errors.institution) setErrors(prev => ({ ...prev, institution: "" }));
                       }}
-                      autoFilled={resumeStatus === "parsed" && !isJdUpload}
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload && !resumeDegraded}
                       error={errors.institution}
                     />
                     <Field
@@ -629,7 +685,7 @@ export default function Onboarding() {
                         setYearCohort(val);
                         if (errors.yearCohort) setErrors(prev => ({ ...prev, yearCohort: "" }));
                       }}
-                      autoFilled={resumeStatus === "parsed" && !isJdUpload}
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload && !resumeDegraded}
                       error={errors.yearCohort}
                     />
                   </div>

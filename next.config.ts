@@ -21,11 +21,15 @@ const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
-  "connect-src 'self' https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com https://*.googleapis.com wss://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.google.com https://cdn.jsdelivr.net",
+  "connect-src 'self' https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com https://*.googleapis.com wss://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.google.com https://cdn.jsdelivr.net https://login.microsoftonline.com",
   "img-src 'self' data: blob: https:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net",
+  // apis.google.com hosts the Firebase auth popup/iframe client (Google + Microsoft SSO).
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net https://apis.google.com",
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
+  // Firebase signInWithPopup renders the auth handler from the project's
+  // authDomain (*.firebaseapp.com) and the providers' own sign-in screens.
+  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://login.microsoftonline.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "frame-ancestors 'none'",

@@ -6,7 +6,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useAuth } from "@/components/AuthProvider";
 import { db } from "@/lib/firebase";
-import { PageShell, Card, Button, Heading, Label, Badge, Eyebrow } from "@/components/ui";
+import { PageShell, Card, Button, Heading, Label, Badge, Eyebrow, useToast } from "@/components/ui";
 import { roleDef } from "@/lib/roles";
 
 type Profile = {
@@ -40,8 +40,8 @@ export default function ProfilePage() {
   const [name, setName] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "loading" | "saving">("loading");
-  const [message, setMessage] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
+  const { toast } = useToast();
 
   const authHeader = useCallback(async (): Promise<Record<string, string>> => {
     if (!user) return {};
@@ -118,7 +118,6 @@ export default function ProfilePage() {
   const save = async () => {
     if (!user) return;
     setState("saving");
-    setMessage(null);
     const profileFields = {
       title: fields.title?.trim() || "",
       organisation: fields.organisation?.trim() || "",
@@ -141,9 +140,9 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
         body: JSON.stringify({ name: name.trim(), profile: profileFields }),
       }).catch(() => {});
-      setMessage({ tone: "ok", text: "Profile saved." });
+      toast("Profile saved.", "success");
     } catch {
-      setMessage({ tone: "err", text: "Could not save your profile." });
+      toast("Could not save your profile.", "error");
     } finally {
       setState("idle");
     }
@@ -151,10 +150,22 @@ export default function ProfilePage() {
 
   if (loading || state === "loading") {
     return (
-      <PageShell width="narrow">
-        <div className="flex min-h-[40vh] items-center justify-center text-ink-400">
-          <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading profile" />
+      <PageShell width="default">
+        <div className="animate-pulse">
+          <div className="mb-8 flex items-center justify-between">
+            <div className="h-9 w-40 rounded-lg bg-ink-100" />
+            <div className="h-10 w-32 rounded-lg bg-ink-100" />
+          </div>
+          <div className="h-3 w-24 rounded bg-ink-100" />
+          <div className="mt-3 h-8 w-56 rounded bg-ink-100" />
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="h-72 rounded-xl2 border border-ink-200/60 bg-ink-50/60" />
+            <div className="h-72 rounded-xl2 border border-ink-200/60 bg-ink-50/60 lg:col-span-2" />
+          </div>
         </div>
+        <span className="sr-only">
+          <Loader2 className="animate-spin" aria-label="Loading profile" />
+        </span>
       </PageShell>
     );
   }
@@ -162,7 +173,7 @@ export default function ProfilePage() {
   if (needsAuth) {
     return (
       <PageShell width="narrow">
-        <Card variant="frosted" className="mx-auto max-w-md p-10 text-center">
+        <Card className="mx-auto max-w-md p-10 text-center">
           <Heading as="h1" className="text-2xl">Sign in to view your profile</Heading>
           <p className="mt-3 text-sm text-ink-500">Your profile is private to your account.</p>
           <div className="mt-6 flex justify-center gap-3">
@@ -186,7 +197,7 @@ export default function ProfilePage() {
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 rounded-full border border-ink-200/60 bg-white/50 px-4 py-2 text-sm font-bold text-ink-600 shadow-sm backdrop-blur-md transition-all hover:bg-white/80 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="inline-flex items-center gap-2 rounded-md border border-ink-200 bg-white px-4 py-2 text-sm font-semibold text-ink-700 shadow-sm transition-all hover:border-brand-300 hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to Dashboard
         </Link>
@@ -200,20 +211,6 @@ export default function ProfilePage() {
         <Heading as="h1" className="mt-2 text-3xl sm:text-4xl">Account &amp; profile</Heading>
         <p className="mt-2 text-sm text-ink-500">Manage how you appear across Taledge.</p>
       </div>
-
-      {message && (
-        <div
-          role="status"
-          className={
-            "mb-6 rounded-xl border p-3.5 text-sm font-medium " +
-            (message.tone === "ok"
-              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-              : "border-rose-100 bg-rose-50 text-rose-600")
-          }
-        >
-          {message.text}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Identity summary — sticky on desktop */}

@@ -52,6 +52,15 @@ h3 {
   body {
     font-feature-settings: "ss01", "cv11";
   }
+
+  /* Consistent keyboard focus ring as a baseline. Components that manage their
+     own focus styles set `focus-visible:outline-none` and keep their ring, so
+     this only fills the gap for elements without an explicit focus treatment. */
+  :focus-visible {
+    outline: 2px solid #6366f1; /* brand-500 */
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 }
 
 @layer components {

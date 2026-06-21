@@ -14,6 +14,7 @@ import {
   Heading,
   Eyebrow,
   Label,
+  Breadcrumbs,
 } from "@/components/ui";
 import { Bar } from "@/components/score-ring";
 import { cn } from "@/lib/utils";
@@ -167,6 +168,13 @@ export default function DnlaReport() {
 
   return (
     <PageShell>
+      <Breadcrumbs
+        items={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Workspace", href: `${flowBase}/${id}` },
+          { label: "DNLA" },
+        ]}
+      />
       <PageHeader
         eyebrow="Step 1 · DNLA"
         title="DNLA behavioural competencies"

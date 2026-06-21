@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Sora, JetBrains_Mono } from "next/font/google";
+import { Sora, JetBrains_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 import { AuthProvider } from "@/components/AuthProvider";
 import { MotionProvider } from "@/components/motion-provider";
+import { ToastProvider, CommandPalette } from "@/components/ui";
 
 // SINGLE product typeface — Sora. One premium geometric variable sans powers
 // EVERY surface (body, UI, and display headings) for a cohesive, world-class
@@ -23,6 +24,14 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
+// Enterprise marketing typeface — Inter. Scoped to the redesigned landing
+// surface via `--font-inter` so the rest of the app keeps its Sora identity.
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Taledge · Talent Intelligence & Success Platform",
   description:
@@ -36,14 +45,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${mono.variable} antialiased bg-canvas text-ink-900 min-h-screen flex flex-col`}>
+      <body className={`${sans.variable} ${mono.variable} ${inter.variable} antialiased bg-canvas text-ink-900 min-h-screen flex flex-col`}>
         <AuthProvider>
-          <MotionProvider>
-            <Nav />
-            <main className="flex-1">
-              {children}
-            </main>
-          </MotionProvider>
+          <ToastProvider>
+            <MotionProvider>
+              <Nav />
+              <main className="flex-1">
+                {children}
+              </main>
+              <CommandPalette />
+            </MotionProvider>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

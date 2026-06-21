@@ -18,6 +18,8 @@ import {
   Heading,
   Eyebrow,
   Stat,
+  useToast,
+  Drawer,
 } from "@/components/ui";
 
 type Segment = "all" | "freshers" | "oneToThree";
@@ -74,6 +76,11 @@ export default function Recruiter() {
   const [dnlaStatus, setDnlaStatus] = useState<DnlaStatus>("all");
   const [sort, setSort] = useState<SortKey>("fit");
   const [chips, setChips] = useState<AdvancedChip[]>([]);
+  // ── Enterprise table UI state (presentation only) ──
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [quickView, setQuickView] = useState<any | null>(null);
+  const { toast } = useToast();
 
   const enrichedPool = useMemo(() => {
     return (recruiterPool ?? []).map((candidate) => {
@@ -180,13 +187,46 @@ export default function Recruiter() {
     );
   }
 
+  // ── Selection (bulk actions) ──
+  const visibleIds = rows.map((r) => r.studentId);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someSelected = visibleIds.some((id) => selected.has(id));
+  const toggleAll = () =>
+    setSelected(() => (allSelected ? new Set() : new Set(visibleIds)));
+  const toggleOne = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  // ── Sortable column headers (drive the existing `sort` state) ──
+  const setSortKey = (key: SortKey) => setSort(key);
+
+  // ── Active-filter chip summary (each chip resets just that filter) ──
+  const activeFilters: { key: string; label: string; clear: () => void }[] = [];
+  if (q) activeFilters.push({ key: "q", label: `Search: "${q}"`, clear: () => setQ("") });
+  if (minFit !== 65) activeFilters.push({ key: "fit", label: `Fit ≥ ${minFit}`, clear: () => setMinFit(65) });
+  if (minSuccess !== 60) activeFilters.push({ key: "succ", label: `Success ≥ ${minSuccess}%`, clear: () => setMinSuccess(60) });
+  if (segment !== "all") activeFilters.push({ key: "seg", label: segment === "freshers" ? "Freshers" : "1–3 yrs", clear: () => setSegment("all") });
+  if (jobType !== "all") activeFilters.push({ key: "jt", label: jobType === "job" ? "Jobs" : "Internships", clear: () => setJobType("all") });
+  if (dnlaStatus !== "all") activeFilters.push({ key: "dnla", label: `DNLA: ${dnlaStatus === "available" ? "Ready" : "Pending"}`, clear: () => setDnlaStatus("all") });
+  chips.forEach((c) => {
+    const def = advancedFilters.find((a) => a.id === c);
+    if (def) activeFilters.push({ key: c, label: def.label, clear: () => toggleChip(c) });
+  });
+
+  const rowPad = density === "compact" ? "py-2.5" : "py-5";
+  const avatarSize = density === "compact" ? "h-9 w-9" : "h-12 w-12";
+
   return (
     <PageShell width="wide" className="pb-32">
       {/* Header Section */}
       <PageHeader
-        className="mb-16"
-        eyebrow="Recruiter Portal"
-        title={<span className="text-gradient-brand">Hiring Intelligence</span>}
+        className="mb-12"
+        eyebrow="Recruiter Console"
+        title="Hiring Intelligence"
         description="Command center for jobs, internships, candidate pools, and deep analytics. Manage role fit and success probability effortlessly."
         actions={
           <>
@@ -270,7 +310,7 @@ export default function Recruiter() {
         initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
         className="mb-16"
       >
-        <Card variant="frosted" className="rounded-xl3 p-6 sm:p-10">
+        <Card variant="default" className="rounded-xl2 p-6 sm:p-8">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <Heading as="h2" className="text-2xl flex items-center gap-3">
               <span className="p-2 bg-brand-100 rounded-xl2 text-brand-600"><IconFilter className="w-5 h-5"/></span>
@@ -288,10 +328,10 @@ export default function Recruiter() {
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
             <FilterField label="Search" htmlFor="recruiter-search">
-              <input id="recruiter-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, college, role..." className="w-full rounded-xl2 border-0 bg-white/50 px-4 py-3 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200/50 backdrop-blur-xl focus:ring-2 focus:ring-brand-600 transition-all placeholder:text-ink-400" />
+              <input id="recruiter-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, college, role..." className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all placeholder:text-ink-400" />
             </FilterField>
             <FilterField label="Posting" htmlFor="recruiter-posting">
-              <select id="recruiter-posting" value={selectedJob} onChange={(e) => setSelectedJob(e.target.value)} className="w-full rounded-xl2 border-0 bg-white/50 px-4 py-3 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200/50 backdrop-blur-xl focus:ring-2 focus:ring-brand-600 transition-all">
+              <select id="recruiter-posting" value={selectedJob} onChange={(e) => setSelectedJob(e.target.value)} className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all">
                 <option value="all">All postings</option>
                 {activeJobs.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
               </select>
@@ -312,7 +352,7 @@ export default function Recruiter() {
               <SegmentedControl ariaLabel="DNLA Status" options={[["all", "All"], ["available", "Ready"], ["pending", "Pending"]]} value={dnlaStatus} onChange={(v) => setDnlaStatus(v as DnlaStatus)} />
             </FilterField>
             <FilterField label="Sort By" htmlFor="recruiter-sort">
-              <select id="recruiter-sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full rounded-xl2 border-0 bg-white/50 px-4 py-3 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200/50 backdrop-blur-xl focus:ring-2 focus:ring-brand-600 transition-all">
+              <select id="recruiter-sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all">
                 <option value="fit">Fit Score</option>
                 <option value="success">Success Probability</option>
                 <option value="technical">Technical</option>
@@ -331,7 +371,7 @@ export default function Recruiter() {
                   type="button"
                   aria-pressed={isActive}
                   onClick={() => toggleChip(chip.id)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${isActive ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20' : 'bg-white/50 text-ink-600 hover:bg-white ring-1 ring-inset ring-ink-200/50'}`}
+                  className={`rounded-md px-3.5 py-1.5 text-xs font-bold transition-all ${isActive ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200' : 'bg-white text-ink-600 hover:bg-ink-50 ring-1 ring-inset ring-ink-200'}`}
                 >
                   {chip.label}
                 </button>
@@ -343,26 +383,78 @@ export default function Recruiter() {
 
       {/* Table Section */}
       <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-16">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <Heading as="h2" className="text-2xl flex items-center gap-3">
             <span className="p-2 bg-emerald-100 rounded-xl2 text-emerald-600"><IconTarget className="w-5 h-5"/></span>
             {rows.length} Candidates Matching
           </Heading>
-          <div className="flex gap-3">
-            <Button type="button" variant="ghost"><IconDownload className="w-4 h-4"/> Export</Button>
-            <Button type="button" variant="primary"><IconReport className="w-4 h-4"/> Group Report</Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-lg border border-ink-200 bg-white p-0.5" role="group" aria-label="Row density">
+              {(["comfortable", "compact"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDensity(d)}
+                  aria-pressed={density === d}
+                  className={`rounded-md px-2.5 py-1 text-xs font-bold capitalize transition-colors ${density === d ? "bg-brand-50 text-brand-700" : "text-ink-500 hover:text-ink-900"}`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+            <Button type="button" variant="ghost" onClick={() => toast(`Exported ${rows.length} candidates (demo)`, "info")}><IconDownload className="w-4 h-4"/> Export</Button>
+            <Button type="button" variant="primary" onClick={() => toast(`Generated group report for ${rows.length} candidates (demo)`, "info")}><IconReport className="w-4 h-4"/> Group Report</Button>
           </div>
         </div>
 
-        <Card variant="frosted" className="rounded-xl3 overflow-hidden">
+        {activeFilters.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-ink-400">Active</span>
+            {activeFilters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={f.clear}
+                className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
+              >
+                {f.label}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Card variant="default" className="rounded-xl2 overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-[1080px]">
-              <div className="grid grid-cols-12 bg-ink-50/50 px-6 py-4 text-xs font-bold uppercase tracking-wider text-ink-500 border-b border-ink-200/50">
-                <div className="col-span-3">Candidate</div>
+              <div className="grid grid-cols-12 bg-ink-50/50 px-6 py-3 text-xs font-bold uppercase tracking-wider text-ink-500 border-b border-ink-200/50">
+                <div className="col-span-3 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all candidates"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = !allSelected && someSelected; }}
+                    onChange={toggleAll}
+                    className="h-4 w-4 rounded border-ink-300 accent-brand-600"
+                  />
+                  Candidate
+                </div>
                 <div className="col-span-2">Opening / Segment</div>
-                <div className="col-span-1">Fit</div>
-                <div className="col-span-2">Interview Scores</div>
-                <div className="col-span-1">Success</div>
+                <div className="col-span-1">
+                  <button type="button" onClick={() => setSortKey("fit")} className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider transition-colors ${sort === "fit" ? "text-brand-700" : "text-ink-500 hover:text-ink-700"}`}>
+                    Fit<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden className={sort === "fit" ? "opacity-100" : "opacity-40"}><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                </div>
+                <div className="col-span-2">
+                  <button type="button" onClick={() => setSortKey("technical")} className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider transition-colors ${sort === "technical" ? "text-brand-700" : "text-ink-500 hover:text-ink-700"}`}>
+                    Interview<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden className={sort === "technical" ? "opacity-100" : "opacity-40"}><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                </div>
+                <div className="col-span-1">
+                  <button type="button" onClick={() => setSortKey("success")} className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider transition-colors ${sort === "success" ? "text-brand-700" : "text-ink-500 hover:text-ink-700"}`}>
+                    Success<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden className={sort === "success" ? "opacity-100" : "opacity-40"}><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                </div>
                 <div className="col-span-2">DNLA / Role Fit</div>
                 <div className="col-span-1 text-right">Action</div>
               </div>
@@ -376,10 +468,17 @@ export default function Recruiter() {
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ delay: idx * 0.05 }}
                       key={r.studentId + r.name}
-                      className="grid grid-cols-12 items-center px-6 py-5 text-sm transition-colors hover:bg-white/80 group"
+                      className={`grid grid-cols-12 items-center px-6 ${rowPad} text-sm transition-colors group ${selected.has(r.studentId) ? "bg-brand-50/50" : "hover:bg-ink-50/60"}`}
                     >
-                      <div className="col-span-3 flex min-w-0 items-center gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-bold text-white shadow-sm">
+                      <div className="col-span-3 flex min-w-0 items-center gap-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${r.name}`}
+                          checked={selected.has(r.studentId)}
+                          onChange={() => toggleOne(r.studentId)}
+                          className="h-4 w-4 shrink-0 rounded border-ink-300 accent-brand-600"
+                        />
+                        <div className={`flex ${avatarSize} shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-bold text-white shadow-sm`}>
                           {initials(r.name)}
                         </div>
                         <div className="min-w-0">
@@ -422,7 +521,15 @@ export default function Recruiter() {
                         </div>
                         <div className="truncate text-xs font-bold text-ink-600">{r.roleFit ?? "Solid role match"}</div>
                       </div>
-                      <div className="col-span-1 flex justify-end">
+                      <div className="col-span-1 flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setQuickView(r)}
+                          aria-label={`Quick view ${r.name}`}
+                          className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition-colors hover:bg-ink-100 hover:text-brand-600"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" /><circle cx="12" cy="12" r="3" /></svg>
+                        </button>
                         <ButtonLink
                           variant="ghost"
                           size="sm"
@@ -449,6 +556,100 @@ export default function Recruiter() {
           </div>
         </Card>
       </motion.div>
+
+      {/* Sticky bulk-action bar (appears when rows are selected) */}
+      {selected.size > 0 && (
+        <div className="fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
+          <div className="flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-2 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.35)]">
+            <span className="px-2 text-sm font-bold text-ink-900">{selected.size} selected</span>
+            <span className="h-5 w-px bg-ink-200" />
+            <Button type="button" variant="ghost" size="sm" onClick={() => toast(`Exported ${selected.size} candidates (demo)`, "info")}>
+              <IconDownload className="w-4 h-4" /> Export
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={() => toast(`Group report for ${selected.size} candidates (demo)`, "info")}>
+              <IconReport className="w-4 h-4" /> Group report
+            </Button>
+            <button type="button" onClick={() => setSelected(new Set())} className="rounded-full px-3 py-1.5 text-sm font-semibold text-ink-500 hover:text-ink-900">
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate quick-view drawer */}
+      <Drawer
+        open={!!quickView}
+        onClose={() => setQuickView(null)}
+        title={quickView?.name ?? "Candidate"}
+        width="md"
+        footer={
+          quickView && (
+            <ButtonLink href={`/student/${quickView.studentId}`} className="w-full justify-center">
+              View full profile
+              <IconArrow className="w-4 h-4" />
+            </ButtonLink>
+          )
+        }
+      >
+        {quickView && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-bold text-white">
+                {initials(quickView.name)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-bold text-ink-900">{quickView.name}</p>
+                <p className="truncate text-sm text-ink-500">{quickView.role} · {quickView.college}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                ["Fit Score", String(quickView.fit)],
+                ["Success", `${quickView.success}%`],
+                ["DNLA", quickView.dnla ?? "Pending"],
+              ].map(([l, v]) => (
+                <div key={l} className="rounded-lg border border-ink-200 bg-white p-3 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">{l}</p>
+                  <p className="mt-1 text-lg font-extrabold text-ink-900">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">Interview scores</p>
+              <ScoreBarLine label="Technical" value={quickView.tech} />
+              <ScoreBarLine label="Behavioural" value={quickView.behav} />
+            </div>
+
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <dt className="text-ink-500">Experience</dt>
+                <dd className="font-semibold text-ink-800">{quickView.experience ?? "Fresher"}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-500">Availability</dt>
+                <dd className="font-semibold text-ink-800">{quickView.availability ?? "Available now"}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-ink-500">Role match</dt>
+                <dd className="font-semibold text-ink-800">{quickView.roleFit ?? "—"}</dd>
+              </div>
+            </dl>
+
+            {(quickView.flags ?? []).length > 0 && (
+              <div>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-400">Signals</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(quickView.flags ?? []).map((f: string) => (
+                    <span key={f} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">{f}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
 
       {/* Bottom Modules */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
