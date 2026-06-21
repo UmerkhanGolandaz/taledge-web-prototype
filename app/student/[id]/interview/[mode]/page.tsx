@@ -8,6 +8,7 @@ import Editor from "@monaco-editor/react";
 import { Card, Button, Badge, Eyebrow, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { getStudent } from "@/lib/data";
+import { useGeminiLive } from "@/hooks/useGeminiLive";
 
 /**
  * Compact DNLA report for the interviewer prompt: each competency's score vs
@@ -161,6 +162,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" },
   };
   const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
+
+  // Gemini Live (realtime HD-voice interviewer). When it connects, it drives the
+  // conversation (native-audio out + mic in + transcription); the text/TTS path
+  // below is the fallback if Live can't connect.
+  const live = useGeminiLive();
+  const [liveActive, setLiveActive] = useState(false);
+  // Mirror the Live transcript into the page (drives the chat UI + the existing
+  // localStorage persistence that the Fit Score report reads).
+  useEffect(() => {
+    if (liveActive && live.messages.length) {
+      setMessages(live.messages.map((m) => ({ role: m.role, text: m.text })));
+    }
+  }, [live.messages, liveActive]);
+  // Reflect the Live AI's speaking state on the visualizer.
+  useEffect(() => {
+    if (liveActive) setAiSpeaking(live.aiSpeaking);
+  }, [live.aiSpeaking, liveActive]);
 
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
@@ -1480,8 +1498,52 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     osc.start(0);
     osc.stop(audioCtxRef.current.currentTime + 0.1);
 
-    startInterview();
+    // Prefer the realtime Gemini Live HD-voice interviewer. Fall back to the
+    // text/TTS flow if Live can't connect (no token, blocked mic, etc.).
+    const resumeContext = profile ? [
+      profile.resumeSummary,
+      profile.resumeSkills && profile.resumeSkills.length > 0 ? `Skills: ${profile.resumeSkills.join(", ")}` : "",
+      profile.resumeProjects && profile.resumeProjects.length > 0 ? `Projects: ${profile.resumeProjects.map((p: any) => `${p.title} (${p.stack?.join(", ") || ""}): ${p.impact || ""}`).join("; ")}` : "",
+      profile.aspiration ? `Goal/Target Placement: ${profile.aspiration}` : "",
+    ].filter(Boolean).join("\n") : "";
+    let liveOk = false;
+    try {
+      liveOk = await live.connect({
+        candidateName: profile?.fullName || "Candidate",
+        role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
+        mode,
+        track,
+        resumeSummary: resumeContext,
+        dnlaSummary: buildDnlaSummary(id),
+        ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
+      });
+    } catch {
+      liveOk = false;
+    }
+    if (liveOk) {
+      setLiveActive(true);
+      setSessionId("live"); // marks the session "live" so the header shows connected
+    } else {
+      startInterview();
+    }
   };
+
+  // End a live interview: stop the socket/mic and mark done (the transcript is
+  // already mirrored + persisted, and the done effect advances to the report).
+  const endLiveInterview = () => {
+    try { live.disconnect(); } catch (e) {}
+    setLiveActive(false);
+    setAiSpeaking(false);
+    setDone(true);
+  };
+
+  // Tear down the Live session when the assessment is blocked.
+  useEffect(() => {
+    if (blocked && liveActive) {
+      try { live.disconnect(); } catch (e) {}
+      setLiveActive(false);
+    }
+  }, [blocked, liveActive, live]);
 
   const closeWarning = async () => {
     setWarningMessage("");
@@ -2221,6 +2283,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
                     {nextStep.label} <ArrowRight className="w-4 h-4" />
                   </button>
+                </div>
+              ) : liveActive ? (
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <div className="flex items-center gap-2.5 text-sm font-semibold text-ink-700" aria-live="polite">
+                    <span className={`flex h-2.5 w-2.5 relative`} aria-hidden>
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${aiSpeaking ? "bg-brand-400" : "bg-emerald-400"} opacity-75`} />
+                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${aiSpeaking ? "bg-brand-500" : "bg-emerald-500"}`} />
+                    </span>
+                    {aiSpeaking ? "Interviewer is speaking…" : "Listening — just speak your answer"}
+                  </div>
+                  <p className="text-[11px] text-ink-500">Live voice interview · talk naturally, like a real call. Keep background noise low.</p>
+                  {live.error && (
+                    <p className="text-[11px] font-semibold text-rose-600" role="alert">{live.error}</p>
+                  )}
+                  <Button type="button" variant="danger" size="sm" onClick={endLiveInterview} className="mt-1">
+                    End interview &amp; see results
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
