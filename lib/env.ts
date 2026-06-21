@@ -12,6 +12,9 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_LIVE_MODEL: z.string().default("gemini-2.5-flash-native-audio-preview-12-2025"),
+  // Gemini HD prebuilt voice for the interviewer TTS (same voices as the Live
+  // API native audio: Aoede, Kore, Leda, Zephyr, ...). Defaults to a female voice.
+  GEMINI_TTS_VOICE: z.string().default("Aoede"),
   // DNLA interview question API (licensed German provider). PLACEHOLDER for now —
   // until this is set, the DNLA interview reuses the same Gemini question
   // generation as the AI interview. See lib/dnla-questions.ts. TODO: swap to the
