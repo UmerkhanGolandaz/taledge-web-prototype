@@ -232,15 +232,27 @@ export async function synthesizeInterviewSpeech(text: string, geminiApiKey: stri
   return "";
 }
 
+// Gemini HD prebuilt voice for the interviewer — the same high-quality native
+// voices the Gemini Live API uses (Aoede, Kore, Leda, Zephyr, ...). Default is a
+// warm female voice; override with GEMINI_TTS_VOICE.
+const DEFAULT_GEMINI_VOICE = "Aoede";
+
 export async function generateGeminiTTS(apiKey: string, text: string): Promise<string> {
   // Key goes in the header, never the URL (URLs leak into logs/proxies).
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`;
+  const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_GEMINI_VOICE;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: "Read the following text exactly aloud:\n\n" + text }] }],
-      generationConfig: { responseModalities: ["AUDIO"] }
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        // Select the HD prebuilt voice (the Gemini Live native-audio voices).
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+        },
+      },
     }),
     signal: AbortSignal.timeout(20_000),
   });
