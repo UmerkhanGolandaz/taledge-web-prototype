@@ -258,6 +258,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const referenceImageRef = useRef<string | null>(null);
   const personCountRef = useRef(0);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -1196,9 +1197,13 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     return () => clearTimeout(t);
   }, [done, router, id, nextStep.href]);
 
+  // Auto-scroll the transcript to the latest line — including the live streaming
+  // captions and the "thinking" indicator, not just committed messages. Scroll
+  // the container directly (most reliable for a streaming, overflowing log).
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = chatScrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, live.partialAi, live.partialUser, isProcessing, liveActive]);
 
   const stripMarkdown = (text: string) => text.replace(/\*/g, "");
 
@@ -2517,7 +2522,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           {/* Right Column: Chat Interface */}
           <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent" role="log" aria-label="Interview conversation" aria-live="polite">
+            <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent" role="log" aria-label="Interview conversation" aria-live="polite">
               {(messages?.length ?? 0) === 0 && !isProcessing && connectError && (
                 <div className="h-full flex items-center justify-center">
                   <Card variant="flat" className="rounded-xl2 px-6 py-5 text-center max-w-sm border-rose-200" role="alert" aria-live="assertive">
@@ -2641,18 +2646,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 </div>
               ) : liveActive ? (
                 (() => {
-                  // The interviewer "has the floor" while it is speaking or its
-                  // captions are still streaming. During that window the mic is
-                  // muted and the answer box is locked; both reopen on the
-                  // candidate's turn.
-                  const aiHasFloor = aiSpeaking || !!live.partialAi;
+                  // The interviewer "has the floor" from the moment the session is
+                  // ready (it greets first) through every AI turn, until that turn
+                  // completes. While it holds the floor the mic is muted and the
+                  // answer box is locked; both reopen on the candidate's turn.
+                  const aiHasFloor = aiSpeaking || live.aiActive || !!live.partialAi;
+                  const aiStarting = aiHasFloor && !aiSpeaking && !live.partialAi;
                   return (
                 <div className="space-y-3">
                   <div className={`flex items-center justify-center gap-2.5 text-sm font-semibold ${aiHasFloor ? "text-brand-700" : "text-emerald-700"}`} aria-live="polite">
                     {aiHasFloor ? (
                       <>
                         <MicOff aria-hidden className="w-4 h-4" />
-                        Interviewer is speaking… your mic is muted
+                        {aiStarting ? "The interviewer is about to speak… please wait" : "Interviewer is speaking… your mic is muted"}
                       </>
                     ) : (
                       <>

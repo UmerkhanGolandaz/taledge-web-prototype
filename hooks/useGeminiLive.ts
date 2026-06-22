@@ -28,6 +28,10 @@ export type LiveMessage = { role: "ai" | "user"; text: string };
 export function useGeminiLive() {
   const [isConnected, setIsConnected] = useState(false);
   const [aiSpeaking, setAiSpeaking] = useState(false);
+  // Reactive "the interviewer currently has the floor" flag — true from the
+  // moment the session is ready (the AI greets first) through each AI turn, until
+  // that turn completes. Drives the UI's mic-muted / "your turn" states.
+  const [aiActive, setAiActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMessage[]>([]);
   // Live (in-flight) transcription for the current turn — drives the captions
@@ -238,6 +242,10 @@ export function useGeminiLive() {
           // The Live session is genuinely ready — only now report success.
           setIsConnected(true);
           settle(true);
+          // The interviewer greets/asks FIRST: hold the candidate's mic muted and
+          // mark the AI as having the floor until its opening turn completes.
+          aiTurnActiveRef.current = true;
+          setAiActive(true);
           startMicrophone().catch(() => setError("Microphone access is required for the live interview."));
           return;
         }
@@ -250,6 +258,7 @@ export function useGeminiLive() {
         // show captions as it speaks; the candidate's into `partialUser`.
         if (sc.outputTranscription?.text) {
           aiTurnActiveRef.current = true; // interviewer now has the floor → mute mic
+          setAiActive(true);
           aiTurnRef.current += sc.outputTranscription.text;
           setPartialAi(aiTurnRef.current);
         }
@@ -265,6 +274,7 @@ export function useGeminiLive() {
             const inline = part.inlineData;
             if (inline?.data && typeof inline.mimeType === "string" && inline.mimeType.startsWith("audio/")) {
               aiTurnActiveRef.current = true; // interviewer is speaking → keep mic muted
+              setAiActive(true);
               const binary = atob(inline.data);
               const bytes = new Uint8Array(binary.length);
               for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -281,6 +291,7 @@ export function useGeminiLive() {
           // The interviewer's turn is over. The mic resumes automatically once
           // any queued audio finishes playing (see the onaudioprocess gate).
           aiTurnActiveRef.current = false;
+          setAiActive(false);
           setPartialAi("");
           setPartialUser("");
           setMessages((prev) => {
@@ -327,6 +338,7 @@ export function useGeminiLive() {
     forceMuteRef.current = false;
     setIsConnected(false);
     setAiSpeaking(false);
+    setAiActive(false);
     setPartialAi("");
     setPartialUser("");
   }, []);
@@ -364,6 +376,7 @@ export function useGeminiLive() {
   return {
     isConnected,
     aiSpeaking,
+    aiActive,
     error,
     messages,
     partialAi,
