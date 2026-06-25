@@ -259,6 +259,28 @@ async function seedFirestoreCollection(
   }
 }
 
+/**
+ * Firestore reads return class instances (Timestamp) and other non-plain values.
+ * Passing those from a Server Component into a Client Component throws
+ * "Only plain objects ... can be passed to Client Components" (a candidate doc
+ * whose createdAt/updatedAt were Timestamps crashed /student/<id>). Deep-convert
+ * to plain, JSON-safe data: Timestamps -> epoch millis, everything else
+ * recursively plainified.
+ */
+function toPlain<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  const v = value as any;
+  // Firestore Timestamp: admin SDK exposes toMillis(); the raw shape has _seconds.
+  if (typeof v.toMillis === "function") return v.toMillis();
+  if (typeof v._seconds === "number" && typeof v._nanoseconds === "number") {
+    return (v._seconds * 1000 + Math.round(v._nanoseconds / 1e6)) as any;
+  }
+  if (Array.isArray(value)) return value.map((x) => toPlain(x)) as any;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(v)) out[k] = toPlain(v[k]);
+  return out as T;
+}
+
 async function readCollection<T>(collection: string, seed: () => Record<string, T>): Promise<T[]> {
   if (useFirestore()) {
     try {
@@ -267,7 +289,7 @@ async function readCollection<T>(collection: string, seed: () => Record<string, 
         await seedFirestoreCollection(collection, seed());
         snap = await adminDb!.collection(collection).get();
       }
-      return snap.docs.map((d) => d.data() as T);
+      return snap.docs.map((d) => toPlain(d.data()) as T);
     } catch (e) {
       logger.error(`[talent-store] Firestore read ${collection} failed; file fallback`, { err: String(e) });
     }
@@ -297,7 +319,7 @@ async function queryByField<T>(
       const probe = await adminDb!.collection(collection).limit(1).get();
       if (probe.empty) await seedFirestoreCollection(collection, seed());
       const snap = await adminDb!.collection(collection).where(field as any, "==", value as any).get();
-      return snap.docs.map((d) => d.data() as T);
+      return snap.docs.map((d) => toPlain(d.data()) as T);
     } catch (e) {
       logger.error(`[talent-store] indexed query ${collection}.${field} failed; file fallback`, { err: String(e) });
     }
@@ -317,7 +339,7 @@ export async function getCandidate(id: string): Promise<CandidateRecord | null> 
   if (useFirestore()) {
     try {
       const snap = await adminDb!.collection(COL.candidates).doc(id).get();
-      if (snap.exists) return snap.data() as CandidateRecord;
+      if (snap.exists) return toPlain(snap.data()) as CandidateRecord;
     } catch (e) {
       logger.error("[talent-store] getCandidate failed; file fallback", { err: String(e) });
     }
@@ -565,7 +587,7 @@ export async function listRecruiterVisibleCandidates(recruiterId: string): Promi
         adminDb!.collection(COL.candidates).where("recruiterId", "==", recruiterId).get(),
       ]);
       const merged = new Map<string, CandidateRecord>();
-      for (const d of [...pub.docs, ...own.docs]) merged.set(d.id, d.data() as CandidateRecord);
+      for (const d of [...pub.docs, ...own.docs]) merged.set(d.id, toPlain(d.data()) as CandidateRecord);
       return Array.from(merged.values());
     } catch (e) {
       logger.error("[talent-store] listRecruiterVisibleCandidates failed; file fallback", { err: String(e) });
