@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { adminAuth, isAdminConfigured } from "@/lib/firebase-admin";
 import { AUTH_ENFORCED } from "@/lib/flags";
+import { getInvite } from "@/lib/talent-store";
 
 export type Principal = {
   /** Stable user id. In enforced mode this is the verified Firebase uid. */
@@ -10,6 +11,9 @@ export type Principal = {
   /** True when running without verified auth (demo/dev). */
   demo: boolean;
   email?: string;
+  /** True when authenticated via an invite token (an account-less candidate the
+   *  recruiter/university invited). Their uid is their candidate-inv-* workspace. */
+  invite?: boolean;
 };
 
 function bearer(req: NextRequest | Request): string | null {
@@ -17,6 +21,19 @@ function bearer(req: NextRequest | Request): string | null {
   if (!h) return null;
   const m = /^Bearer\s+(.+)$/i.exec(h.trim());
   return m ? m[1] : null;
+}
+
+/** The invite token a candidate carries instead of a Firebase login. */
+function inviteHeader(req: NextRequest | Request): string | null {
+  const h = req.headers.get("x-invite-token") || req.headers.get("X-Invite-Token");
+  const t = h?.trim();
+  return t && t.length <= 128 ? t : null;
+}
+
+/** The candidate-inv-* workspace id an invite token maps to (must match the id
+ *  onboarding derives, app/onboarding/page.tsx, so writes target the right row). */
+export function inviteWorkspaceId(token: string): string {
+  return `candidate-inv-${token.slice(0, 10)}`;
 }
 
 /**
@@ -39,13 +56,29 @@ export async function getPrincipal(req: NextRequest | Request): Promise<Principa
       const decoded = await adminAuth.verifyIdToken(token);
       return { uid: decoded.uid, demo: false, email: decoded.email };
     } catch {
-      // Invalid/expired token.
-      if (AUTH_ENFORCED) return null;
+      // Invalid/expired token - fall through to invite-token / demo handling.
+    }
+  }
+
+  // Invite-token credential. A candidate invited via a recruiter/university link
+  // has NO Firebase account by design - the invite token IS their credential. We
+  // resolve it to a principal scoped to their own candidate-inv-* workspace so
+  // the interview + scoring routes work for them in enforced/production mode
+  // (otherwise every one of those routes 401s and their assessment is lost).
+  const inv = inviteHeader(req);
+  if (inv) {
+    try {
+      const invite = await getInvite(inv);
+      if (invite) {
+        return { uid: inviteWorkspaceId(inv), demo: false, invite: true };
+      }
+    } catch {
+      // Store read failed - fall through (no silent elevation).
     }
   }
 
   if (AUTH_ENFORCED) {
-    // Production requires a verified token; nothing else is accepted.
+    // Production requires a verified token or a valid invite; nothing else.
     return null;
   }
 

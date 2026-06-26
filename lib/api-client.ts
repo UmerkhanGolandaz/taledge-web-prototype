@@ -34,6 +34,17 @@ export async function authedFetch(
   }
 
   if (!token) {
+    // No Firebase user: an invited (account-less) candidate authenticates with
+    // the invite token the recruiter/university issued them (persisted at
+    // onboarding). Attach it so server routes can resolve an invite-scoped
+    // principal - without this, the interview + scoring routes 401 in enforced
+    // mode and the candidate's whole assessment is lost.
+    const invite = readInviteToken();
+    if (invite) {
+      const headers = new Headers(init?.headers);
+      headers.set("X-Invite-Token", invite);
+      return fetch(input, { ...init, headers });
+    }
     return fetch(input, init);
   }
 
@@ -42,6 +53,24 @@ export async function authedFetch(
   headers.set("Authorization", `Bearer ${token}`);
 
   return fetch(input, { ...init, headers });
+}
+
+/**
+ * Read the invite token an invited candidate is operating under, from the
+ * onboarding-persisted workspace profile. Browser-only and best-effort.
+ */
+function readInviteToken(): string | undefined {
+  try {
+    if (typeof localStorage === "undefined") return undefined;
+    const raw =
+      localStorage.getItem("taledge:workspace-profile") ||
+      localStorage.getItem("taledge:demo-profile");
+    if (!raw) return undefined;
+    const p = JSON.parse(raw);
+    return typeof p?.inviteToken === "string" && p.inviteToken ? p.inviteToken : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
