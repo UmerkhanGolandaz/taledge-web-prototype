@@ -20,7 +20,6 @@ import {
   Button,
   ButtonLink,
   Badge,
-  Display,
   Heading,
   Eyebrow,
   Label,
@@ -155,11 +154,15 @@ export default async function InstitutePage({
             <Badge tone="brand" className="uppercase tracking-widest">
               <IconInstitute /> {isExam ? "Competitive Exam Institute" : "Placement Institute"}
             </Badge>
-            <Display className="mt-5 text-gradient-brand">
+            {/* Institute name is the headline; the "Command Center" descriptor is a
+                smaller subtitle - rendering both at Display size ballooned the hero
+                to four oversized gradient lines. */}
+            <h1 className="h-headline text-gradient-brand mt-5 text-3xl leading-[1.1] sm:text-4xl lg:text-5xl">
               {inst.name}
-              <br />
+            </h1>
+            <p className="mt-3 text-lg font-bold tracking-tight text-ink-700 sm:text-xl">
               {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"}
-            </Display>
+            </p>
             <p className="mt-4 max-w-2xl text-sm text-ink-500 sm:text-base">
               Production view for <span className="font-semibold text-ink-900">{isExam ? inst.cohort : (placementAnalytics?.cohortSize ?? inst.cohort)}</span> learners across{" "}
               <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:
