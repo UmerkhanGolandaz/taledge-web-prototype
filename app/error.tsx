@@ -39,7 +39,7 @@ export default function Error({
         )}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button onClick={() => reset()}>Try again</Button>
-          <ButtonLink href="/" variant="ghost">
+          <ButtonLink href="/dashboard" variant="ghost">
             Go home
           </ButtonLink>
         </div>

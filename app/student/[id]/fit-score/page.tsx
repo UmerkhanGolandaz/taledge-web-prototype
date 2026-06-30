@@ -1,7 +1,7 @@
 "use client";
 
-import { notFound, useParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { notFound, useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import { getStudent } from "@/lib/data";
@@ -49,6 +49,11 @@ const ROLE_JDS: Record<string, string> = {
   "Consultant · Strategy": "Analytical reasoning, problem-solving, structured case interview frameworks, market entry analysis, financial modeling, slide deck creation, business strategy. Ability to interface with clients, manage stakeholders, and design organizational growth playbooks."
 };
 
+// Demo (pilot) mode: when auth is NOT enforced, the seeded persona's DNLA may be
+// folded into the demo candidate's score. In enforced mode every candidate is a
+// real, distinct user — never borrow the sample persona's psychometrics.
+const DEMO = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "true";
+
 // Stable, module-level defaults so empty-state resets keep a referentially
 // stable object (avoids re-creating the empty report on every render).
 const emptyReportDefaults: GenReport = {
@@ -58,7 +63,7 @@ const emptyReportDefaults: GenReport = {
   success_probability: -1,
   verdict: "Awaiting evidence",
   narrative:
-    "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence. DNLA will be included only after the provider import is connected.",
+    "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence, combined with your DNLA psychometric profile.",
   technical_breakdown: [],
   resume_breakdown: [],
   behavioural_breakdown: [],
@@ -92,10 +97,23 @@ function normalizeReport(raw: Partial<GenReport> | null | undefined): GenReport 
 
 type PublishState = "idle" | "publishing" | "published" | "error";
 
-export default function FitScorePage() {
+function FitScorePageInner() {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // External read-only view: a recruiter ("View") or an institute admin ("Drill
+  // down") opens this report with ?view=recruiter / ?view=institute. In that mode
+  // we render ONLY the candidate's persisted Fit Score report - no candidate
+  // self-actions (Publish / Reattempt / Generate / Regenerate / "Start
+  // assessment") - and we NEVER trigger a Gemini generation (read the stored
+  // server copy only, which is free).
+  const viewParam = searchParams.get("view");
+  const instituteView = viewParam === "institute";
+  // Any external viewer = read-only. `recruiterView` keeps its name as the gate
+  // for that behaviour across the page; institute-specific copy keys off
+  // `instituteView`.
+  const recruiterView = viewParam === "recruiter" || instituteView;
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
@@ -116,6 +134,9 @@ export default function FitScorePage() {
   const [generatedAt, setGeneratedAt] = useState<number | null>(null);
   const [publishState, setPublishState] = useState<PublishState>("idle");
   const [publishError, setPublishError] = useState<string>("");
+  // Candidate's real name, resolved from the durable record (recruiter view only -
+  // the recruiter's own localStorage profile would otherwise mislabel the report).
+  const [recruiterName, setRecruiterName] = useState<string>("");
 
   // Publish the Fit Score report to the recruiter portal. Confirms intent,
   // shows a loading state, and surfaces a success / error result.
@@ -182,18 +203,35 @@ export default function FitScorePage() {
   }, [id, router, flowBase]);
 
   const readTranscripts = useCallback(() => {
-    try {
-      const tech = localStorage.getItem(`taledge:interview:${id}:technical`);
-      const behav = localStorage.getItem(`taledge:interview:${id}:behavioural`);
-      const dnlaCache = localStorage.getItem(`taledge:dnla:${id}`);
-      return {
-        technical: tech ? (JSON.parse(tech) as Msg[]) : [],
-        behavioural: behav ? (JSON.parse(behav) as Msg[]) : [],
-        dnla: dnlaCache ? JSON.parse(dnlaCache).report : null,
-      };
-    } catch {
-      return { technical: [] as Msg[], behavioural: [] as Msg[], dnla: null };
-    }
+    // Parse each round INDEPENDENTLY: one corrupted transcript must not discard
+    // the others (a single shared try/catch previously wiped all three rounds,
+    // silently scoring everything "Pending" off a real, completed interview).
+    const readOne = (...keys: string[]): Msg[] => {
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed as Msg[];
+        } catch {
+          /* corrupted entry for this key - try the next, then give up */
+        }
+      }
+      return [];
+    };
+    // The guided funnel routes the behavioural round to /interview/dnla, so it
+    // persists the transcript under the `:dnla` key. Prefer the standalone
+    // `:behavioural` key when present, otherwise fall back to the funnel's
+    // `:dnla` transcript - this is the key mismatch that previously left the
+    // behavioural score permanently "Pending".
+    return {
+      technical: readOne(`taledge:interview:${id}:technical`),
+      behavioural: readOne(
+        `taledge:interview:${id}:behavioural`,
+        `taledge:interview:${id}:dnla`
+      ),
+      final: readOne(`taledge:interview:${id}:final`),
+    };
   }, [id]);
 
   const readWorkspaceProfile = useCallback(() => {
@@ -211,7 +249,7 @@ export default function FitScorePage() {
   const generate = useCallback(async () => {
     setStatus("generating");
     setGenError("");
-    const { technical, behavioural, dnla } = readTranscripts();
+    const { technical, behavioural, final } = readTranscripts();
     const profile = readWorkspaceProfile();
     try {
       const r = await authedFetch("/api/generate-fit-score", {
@@ -222,6 +260,10 @@ export default function FitScorePage() {
           track,
           candidateName: profile.fullName || s.name,
           targetRole: profile.targetRole || s.targetRole,
+          // Off-campus invite linkage: send the invite TOKEN; the server resolves
+          // the recruiter/job binding from it (never trusts a client recruiterId).
+          inviteToken: profile.inviteToken || undefined,
+          college: profile.institution || undefined,
           resumeSummary: [
             profile.resumeSummary || s.resumeSummary,
             profile.aspiration ? `Career aspiration: ${profile.aspiration}` : "",
@@ -230,10 +272,16 @@ export default function FitScorePage() {
           resumeProjects: profile.resumeProjects?.length ? profile.resumeProjects : s.projects,
           technicalQA: technical,
           behaviouralQA: behavioural,
-          dnla: dnla?.dnla || [],
-          dnlaStrengths: dnla?.strengths || [],
-          dnlaDevelopmentAreas: dnla?.developmentAreas || [],
-          dnlaRisks: dnla?.risks || [],
+          finalQA: final,
+          // DNLA provider isn't wired yet. Use the seeded psychometric profile
+          // ONLY for the demo persona (candidate-001) - never borrow it for a real
+          // or invited candidate (that would leak one person's DNLA to everyone and
+          // contaminate their score). Real candidates show "DNLA pending" until the
+          // live /api/dnla provider is set.
+          dnla: DEMO && id === "candidate-001" ? (s.dnla || []) : [],
+          dnlaStrengths: DEMO && id === "candidate-001" ? (s.strengths || []) : [],
+          dnlaDevelopmentAreas: DEMO && id === "candidate-001" ? (s.developmentAreas || []) : [],
+          dnlaRisks: DEMO && id === "candidate-001" ? (s.risks || []) : [],
         }),
       });
       const data = await r.json();
@@ -262,15 +310,78 @@ export default function FitScorePage() {
 
   useEffect(() => {
     setStatus("checking");
+    // Recruiter read-only view: load ONLY the candidate's persisted server report
+    // (free, cross-device). Never read this device's localStorage (it's the
+    // recruiter's, not the candidate's) and never auto-generate (no Gemini cost).
+    if (recruiterView) {
+      void (async () => {
+        try {
+          const r = await authedFetch(`/api/generate-fit-score?studentId=${encodeURIComponent(id)}`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d?.name) setRecruiterName(String(d.name));
+            // 1) A full, detailed LLM report exists - show it verbatim.
+            if (d?.ok && d.report?.fit_score != null) {
+              setReport(normalizeReport(d.report));
+              setSource(d.source || "stored");
+              setGeneratedAt(Number(d.ts) || null);
+              setStatus("generated");
+              return;
+            }
+            // 2) No detailed report, but the candidate HAS headline scores (seed /
+            // pre-detailed). Render those real numbers - the recruiter pool already
+            // shows them - instead of a misleading "no report" state. We never call
+            // the generator here, so there is no Gemini cost.
+            const f = d?.summary?.fit;
+            const hasScores =
+              f && (Number(f.fit) > 0 || Number(f.technical) > 0 || Number(f.behavioural) > 0);
+            if (hasScores) {
+              const fitN = Number(f.fit) || -1;
+              setReport(
+                normalizeReport({
+                  technical_score: Number(f.technical) || -1,
+                  behavioural_score: Number(f.behavioural) || -1,
+                  fit_score: fitN,
+                  success_probability: Number(f.successProbability) || -1,
+                  verdict: fitN >= 70 ? "Interview-ready" : "Below interview-readiness threshold",
+                  narrative:
+                    "Headline Fit Score summary from this candidate's assessment results. The full component-level breakdown (technical, resume, behavioural, and cross-component checks) appears here once the candidate generates and publishes their detailed report.",
+                  technical_breakdown: [],
+                  resume_breakdown: [],
+                  behavioural_breakdown: [],
+                  cross_flags: [],
+                })
+              );
+              setSource("summary");
+              setStatus("generated");
+              return;
+            }
+          }
+        } catch {
+          /* fall through to the read-only empty state */
+        }
+        setStatus("idle");
+      })();
+      return;
+    }
+    // Freshness baseline: the newest interview round on THIS device. A stored
+    // report (local OR server) is trusted only if generated AFTER this, so
+    // retaking any round still forces a regenerate.
+    const lastTechUpdate = Number(localStorage.getItem(`taledge:interview:${id}:technical:updatedAt`) || 0);
+    // Behavioural round can land under either key; take the freshest of both
+    // plus the final round so retaking ANY round invalidates a stale report.
+    const lastBehavUpdate = Math.max(
+      Number(localStorage.getItem(`taledge:interview:${id}:behavioural:updatedAt`) || 0),
+      Number(localStorage.getItem(`taledge:interview:${id}:dnla:updatedAt`) || 0)
+    );
+    const lastFinalUpdate = Number(localStorage.getItem(`taledge:interview:${id}:final:updatedAt`) || 0);
+    const lastUpdate = Math.max(lastTechUpdate, lastBehavUpdate, lastFinalUpdate);
+
     let hydrated = false;
     try {
       const cached = localStorage.getItem(`taledge:fit-score:${id}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        const lastTechUpdate = Number(localStorage.getItem(`taledge:interview:${id}:technical:updatedAt`) || 0);
-        const lastBehavUpdate = Number(localStorage.getItem(`taledge:interview:${id}:behavioural:updatedAt`) || 0);
-        const lastUpdate = Math.max(lastTechUpdate, lastBehavUpdate);
-
         // Auto-regenerate if a new interview has been taken since the report was generated
         if (parsed?.report?.fit_score != null && parsed.ts > lastUpdate) {
           setReport(normalizeReport(parsed.report));
@@ -281,27 +392,61 @@ export default function FitScorePage() {
         }
       }
     } catch {
-      /* fall through to auto-generate */
+      /* fall through to server / auto-generate */
     }
+
     if (!hydrated) {
-      const { technical, behavioural } = readTranscripts();
-      const userAnswers =
-        technical.filter((m) => m.role === "user").length +
-        behavioural.filter((m) => m.role === "user").length;
-      if (userAnswers > 0) {
-        void generate();
-      } else {
-        setStatus("idle");
-      }
+      void (async () => {
+        // No fresh LOCAL report (new device / cleared storage): try the durable
+        // SERVER copy before regenerating - it's free (no LLM call) and works
+        // cross-device. Accept it only if it's fresher than the latest round.
+        try {
+          const r = await authedFetch(`/api/generate-fit-score?studentId=${encodeURIComponent(id)}`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d?.ok && d.report?.fit_score != null && (Number(d.ts) || 0) > lastUpdate) {
+              setReport(normalizeReport(d.report));
+              setSource(d.source || "stored");
+              setGeneratedAt(Number(d.ts) || null);
+              setStatus("generated");
+              try {
+                localStorage.setItem(
+                  `taledge:fit-score:${id}`,
+                  JSON.stringify({ report: d.report, source: d.source || "stored", ts: Number(d.ts) || Date.now() })
+                );
+              } catch {
+                /* non-fatal */
+              }
+              return;
+            }
+          }
+        } catch {
+          /* fall through to local regenerate */
+        }
+        const { technical, behavioural, final } = readTranscripts();
+        const userAnswers =
+          technical.filter((m) => m.role === "user").length +
+          behavioural.filter((m) => m.role === "user").length +
+          final.filter((m) => m.role === "user").length;
+        if (userAnswers > 0) {
+          void generate();
+        } else {
+          setStatus("idle");
+        }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, recruiterView]);
 
   const profile = readWorkspaceProfile();
   // Prefer the candidate's real onboarding profile name over the seeded demo
   // student record - everyone browses under the same demo id (candidate-001),
-  // so s.name would otherwise label every report with the seeded persona.
-  const candidateName: string = (profile.fullName && String(profile.fullName).trim()) || s.name;
+  // so s.name would otherwise label every report with the seeded persona. In the
+  // recruiter view we have no candidate-local profile, so use the name resolved
+  // from the durable record (never the recruiter's own localStorage profile).
+  const candidateName: string = recruiterView
+    ? (recruiterName || s.name)
+    : (profile.fullName && String(profile.fullName).trim()) || s.name;
   const candidateFirst = candidateName.split(" ")[0];
 
   return (
@@ -314,25 +459,48 @@ export default function FitScorePage() {
         {/* Header */}
         <motion.div variants={itemVariants} className="mb-10">
           <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/dashboard" },
-              { label: "Workspace", href: `${flowBase}/${s.id}` },
-              { label: "Fit Score" },
-            ]}
+            items={
+              recruiterView
+                ? [
+                    { label: instituteView ? "Institute" : "Recruiter", href: "/dashboard" },
+                    { label: instituteView ? "Student report" : "Candidate report" },
+                  ]
+                : [
+                    { label: "Dashboard", href: "/dashboard" },
+                    { label: "Workspace", href: `${flowBase}/${s.id}` },
+                    { label: "Fit Score" },
+                  ]
+            }
           />
           <PageHeader
-            eyebrow="Fit Score & Success Probability"
-            title={`Structured feedback report for ${candidateFirst}`}
-            description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
+            eyebrow={
+              recruiterView
+                ? instituteView
+                  ? "Student Fit Score Report"
+                  : "Candidate Fit Score Report"
+                : "Fit Score & Success Probability"
+            }
+            title={
+              recruiterView
+                ? `Fit Score report · ${candidateName}`
+                : `Structured feedback report for ${candidateFirst}`
+            }
+            description="Composite Fit Score synthesized from technical interview, behavioural interview, DNLA psychometrics, resume signals, and cross-component checks."
             actions={
               <div className="flex items-center gap-2 print:hidden">
                 <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} aria-label="Print or save report as PDF">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
                   Print / PDF
                 </Button>
-                <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
-                  <ArrowLeft /> Back to Dashboard
-                </ButtonLink>
+                {recruiterView ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => router.back()} aria-label={instituteView ? "Back to cohort" : "Back to recruiter pipeline"}>
+                    <ArrowLeft /> {instituteView ? "Back to cohort" : "Back to pipeline"}
+                  </Button>
+                ) : (
+                  <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+                    <ArrowLeft /> Back to Dashboard
+                  </ButtonLink>
+                )}
               </div>
             }
           />
@@ -344,6 +512,7 @@ export default function FitScorePage() {
             error={genError}
             generatedAt={generatedAt}
             onRegenerate={generate}
+            readOnly={recruiterView}
           />
         </motion.div>
 
@@ -354,29 +523,32 @@ export default function FitScorePage() {
              instead of a blank/Pending score grid. */
           <motion.div variants={itemVariants}>
             <Card variant="default" className="rounded-xl2 overflow-hidden p-8 text-center sm:p-12">
-              <Eyebrow className="text-brand-500">No assessment evidence yet</Eyebrow>
+              <Eyebrow className="text-brand-500">No Fit Score report yet</Eyebrow>
               <Heading as="h2" className="mt-3">
-                Complete an interview to unlock your Fit Score
+                {recruiterView
+                  ? `This ${instituteView ? "student" : "candidate"} hasn't completed a Fit Score report yet`
+                  : "Complete an interview to unlock your Fit Score"}
               </Heading>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
-                We could not find a captured assessment for
-                {" "}{candidateFirst}. Complete the assessment first - DNLA, then
-                the AI technical and behavioural interviews - to generate a
-                personalized Fit Score report grounded in your responses.
+                {recruiterView
+                  ? `${candidateName} has not completed the assessment, so there is no Fit Score report to display yet. It will appear here once they finish their interviews.`
+                  : `We could not find a captured assessment for ${candidateFirst}. Complete the AI technical and behavioural interviews to generate a personalized Fit Score report grounded in your responses.`}
               </p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <ButtonLink
-                  href={`${flowBase}/${s.id}/dnla`}
-                  variant="primary"
-                  size="lg"
-                >
-                  Start assessment
-                  <ArrowRight />
-                </ButtonLink>
-                <Button type="button" onClick={generate} variant="ghost" size="lg">
-                  Generate now
-                </Button>
-              </div>
+              {!recruiterView && (
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <ButtonLink
+                    href={`${flowBase}/${s.id}/dnla`}
+                    variant="primary"
+                    size="lg"
+                  >
+                    Start assessment
+                    <ArrowRight />
+                  </ButtonLink>
+                  <Button type="button" onClick={generate} variant="ghost" size="lg">
+                    Generate now
+                  </Button>
+                </div>
+              )}
             </Card>
           </motion.div>
         ) : (
@@ -404,7 +576,7 @@ export default function FitScorePage() {
                     <HeadlineStat
                       label="Behavioural Score"
                       value={report.behavioural_score === -1 ? "Pending" : `${report.behavioural_score}%`}
-                      hint="Behavioural interview; DNLA after import"
+                      hint="Behavioural interview + DNLA"
                     />
                     <HeadlineStat
                       label="Fit Score"
@@ -429,6 +601,7 @@ export default function FitScorePage() {
                       tone={report.fit_score >= 70 ? "ok" : "warn"}
                     />
                   </div>
+                  {!recruiterView && (
                   <div className="space-y-2.5 lg:col-span-3">
                     <Button
                       type="button"
@@ -466,6 +639,7 @@ export default function FitScorePage() {
                       Development Pathway
                     </ButtonLink>
                   </div>
+                  )}
                 </div>
               </Card>
             </motion.div>
@@ -569,8 +743,9 @@ export default function FitScorePage() {
                     DNLA Social Competence
                   </Heading>
                   <p className="mt-2 max-w-2xl text-sm text-ink-500">
-                    Per PRD §9.3 · DNLA remains pending until the official provider
-                    import is connected. No placeholder psychometric scores are shown.
+                    Psychometric competency profile, scored 1–7 against the
+                    top-performer benchmark. Demo profile shown pending the verified
+                    DNLA provider import.
                   </p>
                 </div>
                 <ButtonLink href={`${flowBase}/${s.id}/dnla`} variant="ghost" size="sm">
@@ -579,11 +754,36 @@ export default function FitScorePage() {
                 </ButtonLink>
               </div>
               <Card variant="default" className="w-full rounded-xl2 overflow-hidden p-6">
-                <Eyebrow>Awaiting DNLA import</Eyebrow>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
-                  DNLA competencies will appear only after verified external import.
-                  Until then, behavioural scoring is based on interview evidence only.
-                </p>
+                {(s.dnla ?? []).length === 0 ? (
+                  <>
+                    <Eyebrow>DNLA profile</Eyebrow>
+                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
+                      No DNLA competencies on file for this candidate yet.
+                    </p>
+                  </>
+                ) : (
+                  <ul className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                    {[...(s.dnla ?? [])]
+                      .sort((a, b) => b.score - a.score)
+                      .map((d) => (
+                        <li key={d.competency}>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="text-sm font-semibold text-ink-800">{d.competency}</span>
+                            <span className="shrink-0 text-xs font-medium text-ink-500 tabular-nums">
+                              {d.score} / 7<span className="text-ink-400"> · bm {d.benchmark}</span>
+                            </span>
+                          </div>
+                          <div className="mt-1.5">
+                            <Bar
+                              value={d.score}
+                              max={7}
+                              tone={d.score >= 6 ? "success" : d.score >= 4 ? "dark" : d.score >= 3 ? "warn" : "danger"}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                )}
               </Card>
             </motion.section>
 
@@ -642,7 +842,9 @@ export default function FitScorePage() {
               </Card>
             </motion.section>
 
-            {/* PUBLISH OR REATTEMPT */}
+            {/* PUBLISH OR REATTEMPT - candidate self-actions, hidden in the
+                recruiter read-only view. */}
+            {!recruiterView && (
             <motion.section variants={itemVariants} className="mt-12">
               <Card variant="default" className="rounded-xl2 overflow-hidden p-6 sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-6">
@@ -694,8 +896,10 @@ export default function FitScorePage() {
                 </div>
               </Card>
             </motion.section>
+            )}
 
-            {/* NEXT STEP */}
+            {/* NEXT STEP - candidate's onward path, hidden for recruiters. */}
+            {!recruiterView && (
             <motion.section variants={itemVariants} className="mt-12">
               <div className="rounded-xl2 border border-brand-200 bg-brand-50/70 p-6 sm:p-8 shadow-panel">
                 <div className="flex flex-wrap items-center justify-between gap-6">
@@ -720,10 +924,23 @@ export default function FitScorePage() {
                 </div>
               </div>
             </motion.section>
+            )}
           </div>
         )}
       </motion.section>
     </PageShell>
+  );
+}
+
+/**
+ * Suspense boundary required by Next.js 15 for `useSearchParams()` in a client
+ * component. The fallback mirrors the report's loading shell.
+ */
+export default function FitScorePage() {
+  return (
+    <Suspense fallback={<PageShell><ReportSkeleton /></PageShell>}>
+      <FitScorePageInner />
+    </Suspense>
   );
 }
 
@@ -867,14 +1084,19 @@ function GenStatusBanner({
   error,
   generatedAt,
   onRegenerate,
+  readOnly = false,
 }: {
   status: GenStatus;
   source: string;
   error: string;
   generatedAt: number | null;
   onRegenerate: () => void;
+  readOnly?: boolean;
 }) {
   if (status === "idle" || status === "checking") {
+    // Read-only (recruiter) view: the empty state is rendered by the page body
+    // with a recruiter-appropriate message - no "generate" prompt here.
+    if (readOnly) return null;
     return (
       <Card variant="default" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 px-5 py-4 text-xs">
         <div className="flex items-center gap-2.5 text-ink-600">
@@ -911,18 +1133,30 @@ function GenStatusBanner({
       generatedAt != null
         ? `${Math.max(1, Math.round((Date.now() - generatedAt) / 1000))}s ago`
         : "just now";
+    // The "summary" source is a headline fallback (aggregate scores only), not a
+    // full LLM generation - label it honestly rather than "generated by AI".
+    const isSummary = source === "summary";
     return (
       <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 border border-emerald-200/50 bg-emerald-50/60 backdrop-blur-xl px-5 py-3.5 text-xs shadow-panel">
         <div className="flex items-center gap-2.5 text-ink-800">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-          <span>
-            Personalized Fit Score report generated by{" "}
-            <span className="font-bold text-ink-900">TalEdge AI</span> · <span className="font-semibold text-emerald-700">{ago}</span>
-          </span>
+          {isSummary ? (
+            <span>
+              Headline Fit Score summary from assessment results ·{" "}
+              <span className="font-semibold text-emerald-700">detailed report pending</span>
+            </span>
+          ) : (
+            <span>
+              Personalized Fit Score report generated by{" "}
+              <span className="font-bold text-ink-900">TalEdge AI</span> · <span className="font-semibold text-emerald-700">{ago}</span>
+            </span>
+          )}
         </div>
-        <Button type="button" onClick={onRegenerate} variant="ghost" size="sm">
-          Regenerate Report
-        </Button>
+        {!readOnly && (
+          <Button type="button" onClick={onRegenerate} variant="ghost" size="sm">
+            Regenerate Report
+          </Button>
+        )}
       </div>
     );
   }
